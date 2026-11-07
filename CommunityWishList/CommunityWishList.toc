@@ -5,6 +5,7 @@
 ## Author: Daniel
 ## SavedVariables: CommunityWishListDB
 ## Dependencies: ItemDB
+## X-Curse-Project-ID: 1789390
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
