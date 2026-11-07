@@ -201,7 +201,7 @@ T.add("Mail panel cannot outlive the mailbox and refreshes on reopen", function(
         T.eq(x, 0)
         T.eq(y, 0)
         T.eq(panel:GetWidth(), 300)
-        T.eq(panel:GetHeight(), 80)
+        T.eq(panel:GetHeight(), math.max(mailbox:GetHeight(), 80), "panel matches the mailbox height")
         panel:Hide()
         mailbox:Hide()
         mailbox:Show()

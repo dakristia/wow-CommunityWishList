@@ -145,19 +145,22 @@ function Mail.CreatePanel(mail)
         return match
     end
 
-    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", MailFrame or UIParent, "CollectionsBackgroundTemplate")
+    -- The panel uses the mailbox's own frame style, so the two read as one window.
+    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", MailFrame or UIParent, "ButtonFrameTemplate")
     panel:ClearAllPoints()
     panel:SetSize(300, 260)
     if MailFrame then panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0) end
+    if ButtonFrameTemplate_HidePortrait then ButtonFrameTemplate_HidePortrait(panel) end
+    if ButtonFrameTemplate_HideButtonBar then ButtonFrameTemplate_HideButtonBar(panel) end
+    if panel.CloseButton then panel.CloseButton:Hide() end
+    panel.Inset:ClearAllPoints()
+    panel.Inset:SetPoint("TOPLEFT", 4, -24)
+    panel.Inset:SetPoint("BOTTOMRIGHT", -6, 6)
+    panel:SetTitle("Wishes to send")
     panel:Hide()
 
-    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", 12, -12)
-    title:SetText("Wishes to send")
-    panel.title = title
-
     local empty = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-    empty:SetPoint("TOPLEFT", 12, -36)
+    empty:SetPoint("TOPLEFT", 14, -34)
     empty:SetText("Nothing to send.")
     panel.empty = empty
 
@@ -179,17 +182,8 @@ function Mail.CreatePanel(mail)
         r.text:SetPoint("RIGHT", -78, 0)
         r.text:SetJustifyH("LEFT")
         r.text:SetWordWrap(false)
-        r.button = CreateFrame("Button", nil, r)
-        r.button:SetSize(70, 22)
-        r.button:SetNormalFontObject(GameFontNormalSmall)
-        r.button:SetHighlightFontObject(GameFontHighlightSmall)
-        r.button:SetDisabledFontObject(GameFontDisableSmall)
-        r.button:SetNormalAtlas("common-dropdown-b-button")
-        r.button:SetPushedAtlas("common-dropdown-b-button-pressed")
-        r.button:SetHighlightAtlas("common-dropdown-b-button-hover", "BLEND")
-        r.button:SetDisabledAtlas("common-dropdown-b-button-disabled")
+        r.button = ns.Button(r, "Mail it")
         r.button:SetPoint("RIGHT", 0, 0)
-        r.button:SetText("Mail it")
         rows[i] = r
         return r
     end
@@ -200,7 +194,7 @@ function Mail.CreatePanel(mail)
         for _, h in ipairs(headers) do h:Hide() end
         local groups = mail:ClaimsToSend()
         panel.empty:SetShown(#groups == 0)
-        local y, n = -36, 0
+        local y, n = -34, 0
         for g, group in ipairs(groups) do
             local header = headers[g]
             if not header then
@@ -232,7 +226,8 @@ function Mail.CreatePanel(mail)
                 y = y - 32
             end
         end
-        panel:SetHeight(math.max(80, -y + 12))
+        -- The panel is as tall as the mailbox, and grows past it only when the list needs the room.
+        panel:SetHeight(math.max(MailFrame and MailFrame:GetHeight() or 0, 80, -y + 12))
     end
 
     mail.store:OnChange(function()
