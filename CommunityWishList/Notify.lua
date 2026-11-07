@@ -24,13 +24,16 @@ function Notify.new(opts)
 end
 
 function Notify:OnClaimNew(wish, claim)
-    if wish.owner ~= self.me or claim.by == self.me or self.db.seen[claim.id] then return end
+    -- Claims that arrive during the login sync wait for the summary, so a returning wisher gets one alert and not dozens.
+    if self.quiet or wish.owner ~= self.me or claim.by == self.me or self.db.seen[claim.id] then return end
     self.db.seen[claim.id] = true
     self.alert(("%s will send you %d x %s"):format(ns.ShortName(claim.by), claim.qty, itemText(wish)))
 end
 
 function Notify:AfterLogin()
+    self.quiet = true
     self.after(10, function()
+        self.quiet = false
         local count = 0
         for _, wish in ipairs(self.store:List({ owner = self.me })) do
             for id, claim in pairs(wish.claims or {}) do
