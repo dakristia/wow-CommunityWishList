@@ -9,7 +9,8 @@ local tabs = { "wishes", "mine", "claims", "groups" }
 local tabNames = { wishes = "Wishes", mine = "My wishes", claims = "My claims", groups = "Groups" }
 local priorities = { "Low", "Normal", "Urgent" }
 local questionMark = "Interface\\Icons\\INV_Misc_QuestionMark"
-local parchment = "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal"
+local neutralIcon = "Interface\\Icons\\INV_Misc_Note_01"
+local contentWidth = 680
 local stateColors = { open = "ffffffff", sent = "ff66dd88", received = "ff77bbff" }
 local emptyText = {
     wishes = "No wishes from your guild yet.",
@@ -18,21 +19,43 @@ local emptyText = {
 }
 
 local function section(parent)
-    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    panel:SetBackdrop({
-        bgFile = parchment, edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    panel:SetBackdropColor(0.24, 0.17, 0.10, 1)
-    panel:SetBackdropBorderColor(0.65, 0.48, 0.23, 1)
+    local panel = CreateFrame("Frame", nil, parent, "CollectionsBackgroundTemplate")
+    panel:ClearAllPoints()
     return panel
 end
 
-local function button(parent, text, width)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+local button = ns.Button
+
+-- The dropdown look has an arrow, so only buttons that pick from a list use it.
+local function dropdownButton(parent, text, width)
+    local b = CreateFrame("Button", nil, parent)
     b:SetSize(width or 70, 22)
+    b:SetNormalFontObject(GameFontNormalSmall)
+    b:SetHighlightFontObject(GameFontHighlightSmall)
+    b:SetDisabledFontObject(GameFontDisableSmall)
+    b:SetNormalAtlas("common-dropdown-b-button")
+    b:SetPushedAtlas("common-dropdown-b-button-pressed")
+    b:SetDisabledAtlas("common-dropdown-b-button-disabled")
+    -- The hover atlas is a whole opaque button, so it swaps in for the normal art.
+    -- As a highlight texture it would draw above the label and hide it.
+    b:SetScript("OnEnter", function(self) self:GetNormalTexture():SetAtlas("common-dropdown-b-button-hover") end)
+    b:SetScript("OnLeave", function(self) self:GetNormalTexture():SetAtlas("common-dropdown-b-button") end)
     b:SetText(text)
     return b
+end
+
+local function itemTooltip(owner, id)
+    if not id or not GameTooltip then return end
+    local link = ns.Items.Link(id)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    if link and GameTooltip.SetHyperlink then
+        GameTooltip:SetHyperlink(link)
+    elseif GameTooltip.SetItemByID then
+        GameTooltip:SetItemByID(id)
+    else
+        return
+    end
+    GameTooltip:Show()
 end
 
 local function editBox(parent, label, x, y, width)
@@ -70,12 +93,25 @@ local function money(copper)
     return table.concat(coins, " ")
 end
 
-local function itemText(wish)
-    if wish.item then
-        local _, link = C_Item.GetItemInfo(wish.item)
-        if link and link ~= "" then return link end
+local function displayItem(wish)
+    if wish.item then return wish.item end
+    local name = strtrim(wish.name):lower()
+    local results = ns.Items.Search(strtrim(wish.name), 50)
+    if #results >= 50 then return nil end
+    local match
+    for _, item in ipairs(results) do
+        if item.name:lower() == name then
+            if match then return nil end
+            match = item.id
+        end
     end
-    local quality = wish.item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(wish.item)
+    return match
+end
+
+local function itemText(wish, item)
+    local link = ns.Items.Link(item)
+    if link and link ~= "" then return link end
+    local quality = ns.Items.Quality(item)
     local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
     if color then return color.hex .. wish.name .. "|r" end
     return wish.name
@@ -84,7 +120,7 @@ end
 local function matchesSearch(wish)
     local query = strtrim(frame.search:GetText()):lower()
     return query == "" or wish.name:lower():find(query, 1, true)
-        or ns.ShortName(wish.owner):lower():find(query, 1, true)
+        or wish.owner:lower():find(query, 1, true)
         or (wish.note or ""):lower():find(query, 1, true)
 end
 
@@ -112,8 +148,10 @@ local function rowFor(wish, claim)
         row = CreateFrame("Frame", nil, frame.scrollChild)
         row:EnableMouse(true)
         row.background = row:CreateTexture(nil, "BACKGROUND")
-        row.background:SetAllPoints()
-        row.background:SetColorTexture(0.55, 0.36, 0.14, 0.16)
+        row.background:SetPoint("BOTTOMLEFT", 8, 0)
+        row.background:SetPoint("BOTTOMRIGHT", -8, 0)
+        row.background:SetHeight(1)
+        row.background:SetColorTexture(0.65, 0.53, 0.33, 0.22)
         row.itemButton = CreateFrame("Button", nil, row)
         row.itemButton:SetSize(32, 32)
         row.itemButton:SetPoint("TOPLEFT", 8, -8)
@@ -137,19 +175,11 @@ local function rowFor(wish, claim)
         row.gold = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         row.gold:SetPoint("TOPRIGHT", -8, -19)
         row.buttonPool = {}
-        row.itemButton:SetScript("OnEnter", function(self)
-            local current = store:Get(row.wishId)
-            if current and current.item and GameTooltip and GameTooltip.SetItemByID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetItemByID(current.item)
-                GameTooltip:Show()
-            end
-        end)
+        row.itemButton:SetScript("OnEnter", function(self) itemTooltip(self, row.displayItem) end)
         row.itemButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
         row.itemButton:SetScript("OnClick", function()
-            local current = store:Get(row.wishId)
-            if current and current.item and HandleModifiedItemClick then
-                local _, link = C_Item.GetItemInfo(current.item)
+            if row.displayItem and HandleModifiedItemClick then
+                local link = ns.Items.Link(row.displayItem)
                 if link then HandleModifiedItemClick(link) end
             end
         end)
@@ -158,6 +188,8 @@ local function rowFor(wish, claim)
     for _, b in pairs(row.buttonPool) do b:Hide() end
     row.buttons = {}
     row.wishId, row.claimId = wish.id, claim and claim.id or nil
+    row.displayItem = nil
+    if not claim then row.displayItem = displayItem(wish) end
     row:ClearAllPoints()
     row:SetHeight(claim and 24 or 48)
     row:SetPoint("TOPLEFT", frame.scrollChild, "TOPLEFT", claim and 44 or 0, -frame.rowHeight)
@@ -168,10 +200,11 @@ local function rowFor(wish, claim)
     row.label:ClearAllPoints()
     row.label:SetFontObject(claim and GameFontNormalSmall or GameFontHighlight)
     row.label:SetTextColor(claim and 0.72 or 1, claim and 0.72 or 1, claim and 0.72 or 1)
-    row.label:SetPoint("TOPLEFT", claim and 8 or 48, claim and -6 or -7)
+    local textLeft = not claim and 48 or 8
+    row.label:SetPoint("TOPLEFT", row, "TOPLEFT", textLeft, claim and -6 or -7)
     row.label:SetPoint("TOPRIGHT", -row.metaWidth - 8, claim and -6 or -7)
     row.detail:ClearAllPoints()
-    row.detail:SetPoint("TOPLEFT", 48, -27)
+    row.detail:SetPoint("TOPLEFT", textLeft, -27)
     row.detail:SetPoint("TOPRIGHT", (wish.gold or 0) > 0 and -108 or -8, -27)
     row.detail:SetShown(not claim)
     row.priority:ClearAllPoints()
@@ -180,12 +213,11 @@ local function rowFor(wish, claim)
     row.gold:SetPoint("TOPRIGHT", row, "TOPRIGHT", -12, -21)
     row.priority:SetShown(not claim)
     row.gold:SetShown(not claim)
-    row.background:SetAlpha(claim and 0.35 or (index % 2 == 0 and 0.65 or 1))
-    local icon = wish.item and C_Item.GetItemIconByID(wish.item) or nil
-    if not wish.item then icon = questionMark end
+    row.background:SetShown(not claim)
+    local icon = not claim and (ns.Items.Icon(row.displayItem) or neutralIcon) or nil
     row.icon:SetTexture(icon)
     row.itemButton:SetShown(not claim)
-    local quality = wish.item and C_Item.GetItemQualityByID and C_Item.GetItemQualityByID(wish.item)
+    local quality = ns.Items.Quality(row.displayItem)
     local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
     row.itemButton.border:SetShown(color ~= nil and color ~= false)
     if color then row.itemButton.border:SetVertexColor(color.r, color.g, color.b) end
@@ -220,8 +252,8 @@ end
 
 local function wishRow(wish)
     local row = rowFor(wish)
-    row.label:SetText(itemText(wish))
-    row.detail:SetText(store:Remaining(wish) .. " of " .. wish.qty .. " wanted · " .. ns.ShortName(wish.owner)
+    row.label:SetText(itemText(wish, row.displayItem))
+    row.detail:SetText(store:Remaining(wish) .. " of " .. wish.qty .. " wanted · " .. wish.owner
         .. (wish.note and wish.note ~= "" and " · " .. wish.note or ""))
     row.priority:SetText(wish.prio == 3 and "|cffff7777Urgent|r" or wish.prio == 1 and "|cffaaaaaaLow|r" or "")
     row.gold:SetText(money(wish.gold))
@@ -249,8 +281,8 @@ refresh = function()
     frame.scrollFrame:SetShown(tab ~= "groups")
     frame.search:SetShown(tab ~= "groups")
     frame.scrollFrame:ClearAllPoints()
-    frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, tab == "mine" and -252 or -100)
-    frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -30, 44)
+    frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -frame.contentTop - (tab == "mine" and 156 or 0))
+    frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -56, frame.contentBottom)
     if tab == "wishes" then
         local wishes = store:List({ state = "open" })
         -- Wishes uses two passes so each remaining-quantity group keeps the store's order.
@@ -276,7 +308,7 @@ refresh = function()
                 for _, claim in ipairs(sortedClaims(wish)) do
                     if tab == "mine" or claim.by == store.me then
                         local claimRow = rowFor(wish, claim)
-                        claimRow.label:SetText(ns.ShortName(claim.by) .. " · " .. claim.qty .. " · |c"
+                        claimRow.label:SetText(claim.by .. " · " .. claim.qty .. " · |c"
                             .. (stateColors[claim.state] or "ff999999") .. claim.state .. "|r · " .. age(claim.created))
                         if tab == "mine" and claim.state == "open" then
                             action(claimRow, "release", "Release", function() return store:ReleaseClaim(wish.id, claim.id) end)
@@ -327,7 +359,7 @@ local function addWish()
     form.error:SetText(wish and "" or reason)
     if wish then
         form.selectedItem = nil
-        form.itemIcon:Hide()
+        form.itemIcon.icon:SetTexture(questionMark)
         form.suggestions:Hide()
         form.item:SetText("")
         form.qty:SetText("")
@@ -340,29 +372,26 @@ local function addWish()
 end
 
 local function createForm()
-    local form = section(frame)
-    form:SetPoint("TOPLEFT", 16, -96)
-    form:SetPoint("TOPRIGHT", -16, -96)
+    local form = CreateFrame("Frame", nil, frame)
+    form:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -frame.contentTop)
+    form:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -56, -frame.contentTop)
     form:SetHeight(146)
-    form.item = editBox(form, "Item", 48, -26, 300)
+    local slotSize, slotGap = 28, 12
+    local textLeft = slotSize + slotGap
+    local leftWidth, rightWidth, gap = contentWidth - 196 - 24 - textLeft, 196, 24
+    form.item = editBox(form, "Item", textLeft, -20, leftWidth)
     form.itemIcon = CreateFrame("Button", nil, form)
-    form.itemIcon:SetSize(28, 28)
-    form.itemIcon:SetPoint("RIGHT", form.item, "LEFT", -8, 0)
+    form.itemIcon:SetSize(slotSize, slotSize)
+    form.itemIcon:SetPoint("RIGHT", form.item, "LEFT", -slotGap, 0)
     form.itemIcon.icon = form.itemIcon:CreateTexture(nil, "ARTWORK")
     form.itemIcon.icon:SetAllPoints()
-    form.itemIcon:SetScript("OnEnter", function(self)
-        if form.selectedItem and GameTooltip and GameTooltip.SetItemByID then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetItemByID(form.selectedItem)
-            GameTooltip:Show()
-        end
-    end)
+    form.itemIcon.icon:SetTexture(questionMark)
+    form.itemIcon:SetScript("OnEnter", function(self) itemTooltip(self, form.selectedItem) end)
     form.itemIcon:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    form.itemIcon:Hide()
     local suggestions = CreateFrame("Frame", nil, form, "BackdropTemplate")
     form.suggestions = suggestions
     suggestions:SetPoint("TOPLEFT", form.item, "BOTTOMLEFT", 0, -2)
-    suggestions:SetWidth(360)
+    suggestions:SetWidth(leftWidth)
     suggestions:SetFrameLevel(form:GetFrameLevel() + 10)
     suggestions:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
     suggestions:SetBackdropColor(0.16, 0.11, 0.06, 1)
@@ -374,13 +403,12 @@ local function createForm()
         form.selectedItem = resolved
         form.item:SetText(name)
         form.itemIcon.icon:SetTexture(ns.Items.Icon(resolved) or questionMark)
-        form.itemIcon:Show()
         suggestions:Hide()
         form.error:SetText("")
     end
     for i = 1, 8 do
         local row = CreateFrame("Button", nil, suggestions)
-        row:SetSize(360, 28)
+        row:SetSize(leftWidth, 28)
         row:SetPoint("TOPLEFT", 0, -(i - 1) * 28)
         row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
         row.icon = row:CreateTexture(nil, "ARTWORK")
@@ -397,7 +425,7 @@ local function createForm()
     form.item:SetScript("OnTextChanged", function(self, userInput)
         if not userInput then return end
         form.selectedItem = nil
-        form.itemIcon:Hide()
+        form.itemIcon.icon:SetTexture(questionMark)
         local results = ns.Items.Search(self:GetText())
         for i, row in ipairs(suggestions.rows) do
             local item = results[i]
@@ -421,12 +449,12 @@ local function createForm()
     form.item:SetScript("OnEditFocusLost", function()
         C_Timer.After(0.2, function() if not form.item:HasFocus() then suggestions:Hide() end end)
     end)
-    form.qty = editBox(form, "Quantity", 370, -26, 138)
-    form.note = editBox(form, "Note", 16, -68, 332)
+    form.qty = editBox(form, "Quantity", textLeft + leftWidth + gap, -20, rightWidth)
+    form.note = editBox(form, "Note", textLeft, -62, leftWidth)
     form.note:SetMaxLetters(120)
-    form.gold = editBox(form, "Gold", 370, -68, 138)
-    form.prio = button(form, "Normal", 72)
-    form.prio:SetPoint("TOPLEFT", 16, -98)
+    form.gold = editBox(form, "Gold", textLeft + leftWidth + gap, -62, rightWidth)
+    form.prio = dropdownButton(form, "Normal", 72)
+    form.prio:SetPoint("TOPLEFT", 0, -96)
     form.prio.value = 2
     form.prio:SetScript("OnClick", function(self)
         self.value = self.value % 3 + 1
@@ -440,11 +468,16 @@ local function createForm()
     label:SetPoint("LEFT", form.guild, "RIGHT", 0, 0)
     label:SetText("Guild")
     form.add = button(form, "Add")
-    form.add:SetPoint("TOPRIGHT", -16, -98)
+    form.add:SetPoint("TOPRIGHT", 0, -96)
     form.add:SetScript("OnClick", addWish)
     form.error = errorText(form)
-    form.error:SetPoint("TOPLEFT", 16, -126)
-    form.error:SetPoint("TOPRIGHT", -16, -126)
+    form.error:SetPoint("TOPLEFT", 0, -124)
+    form.error:SetPoint("TOPRIGHT", 0, -124)
+    local divider = form:CreateTexture(nil, "BACKGROUND")
+    divider:SetColorTexture(0.65, 0.53, 0.33, 0.3)
+    divider:SetHeight(1)
+    divider:SetPoint("BOTTOMLEFT")
+    divider:SetPoint("BOTTOMRIGHT")
     local function receiveItem()
         local kind, id = GetCursorInfo()
         if kind == "item" then
@@ -468,7 +501,7 @@ end
 
 local function createFrame()
     frame = CreateFrame("Frame", "CommunityWishListFrame", UIParent, "PortraitFrameTemplate")
-    frame:SetSize(560, 480)
+    frame:SetSize(760, 520)
     frame:SetPoint(settings.point, UIParent, settings.point, settings.x, settings.y)
     frame:SetMovable(true)
     frame:SetClampedToScreen(true)
@@ -477,12 +510,14 @@ local function createFrame()
     frame:SetPortraitToAsset("Interface\\Icons\\INV_Misc_Note_01")
     frame:SetTitle("Community Wish List")
     frame.title = frame:GetTitleText()
-    frame.Bg:SetTexture(parchment)
-    frame.Bg:SetVertexColor(0.30, 0.21, 0.12)
     frame.Inset = section(frame)
     frame.Inset:SetFrameLevel(frame:GetFrameLevel())
-    frame.Inset:SetPoint("TOPLEFT", 4, -90)
+    frame.Inset:SetPoint("TOPLEFT", frame, "TOPLEFT", 4, -60)
     frame.Inset:SetPoint("BOTTOMRIGHT", -6, 38)
+    local corner = C_Texture.GetAtlasInfo("collections-background-corner")
+    local cornerHeight = corner and corner.height or frame.Inset.BGCornerTopLeft:GetHeight()
+    frame.contentTop = math.max(132, 60 + cornerHeight + 8)
+    frame.contentBottom = math.max(64, 38 + cornerHeight + 8)
     local titleBar = frame.TitleContainer
     titleBar:EnableMouse(true)
     titleBar:RegisterForDrag("LeftButton")
@@ -499,9 +534,9 @@ local function createFrame()
         b:SetID(i)
         b:SetText(tabNames[tab])
         if i == 1 then
-            b:SetPoint("TOPLEFT", 62, -36)
+            b:SetPoint("TOPLEFT", frame, "TOPLEFT", 58, -28)
         else
-            b:SetPoint("LEFT", frame.tabs[tabs[i - 1]], "RIGHT", 4, 0)
+            b:SetPoint("LEFT", frame.tabs[tabs[i - 1]], "RIGHT", 0, 0)
         end
         b:SetScript("OnClick", function() UI.Show(tab) end)
         frame.tabs[tab] = b
@@ -509,25 +544,36 @@ local function createFrame()
     PanelTemplates_SetNumTabs(frame, #tabs)
     frame.search = CreateFrame("EditBox", "CommunityWishListFrameSearch", frame, "SearchBoxTemplate")
     frame.search:SetSize(170, 22)
-    frame.search:SetPoint("TOPRIGHT", -16, -66)
+    frame.search:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -16, -35)
     frame.search:SetScript("OnTextChanged", function(self)
         SearchBoxTemplate_OnTextChanged(self)
         if frame:IsShown() then refresh() end
     end)
-    frame.scrollFrame = CreateFrame("ScrollFrame", nil, frame, "UIPanelScrollFrameTemplate")
+    frame.scrollFrame = CreateFrame("ScrollFrame", nil, frame)
+    frame.scrollFrame:EnableMouseWheel(true)
+    frame.scrollFrame.ScrollBar = CreateFrame("EventFrame", nil, frame.scrollFrame, "WowTrimScrollBar")
+    frame.scrollFrame.ScrollBar:SetPoint("TOPLEFT", frame.scrollFrame, "TOPRIGHT", 4, 0)
+    frame.scrollFrame.ScrollBar:SetPoint("BOTTOMLEFT", frame.scrollFrame, "BOTTOMRIGHT", 4, 0)
+    ScrollUtil.InitScrollFrameWithScrollBar(frame.scrollFrame, frame.scrollFrame.ScrollBar)
     frame.scrollChild = CreateFrame("Frame", nil, frame.scrollFrame)
-    frame.scrollChild:SetSize(514, 1)
+    frame.scrollChild:SetSize(contentWidth, 1)
     frame.scrollFrame:SetScrollChild(frame.scrollChild)
     frame.rows = {}
     frame.empty = frame.scrollFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.empty:SetPoint("TOP", 0, -24)
-    frame.groups = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    frame.groups:SetPoint("CENTER")
-    frame.groups:SetText("Groups come in a later version.")
+    frame.groups = CreateFrame("Frame", nil, frame)
+    frame.groups:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -frame.contentTop)
+    frame.groups:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -56, frame.contentBottom)
+    frame.groups.placeholder = frame.groups:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    frame.groups.placeholder:SetPoint("CENTER")
+    frame.groups.placeholder:SetText("Groups come in a later version.")
     frame.error = errorText(frame)
-    frame.error:SetPoint("BOTTOMLEFT", 16, 10)
+    frame.error:SetPoint("BOTTOMLEFT", 24, 10)
+    frame.error:SetPoint("BOTTOMRIGHT", -56, 10)
     frame.status = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    frame.status:SetPoint("BOTTOMLEFT", 16, 26)
+    frame.status:SetPoint("BOTTOMLEFT", 24, 26)
+    frame.status:SetPoint("BOTTOMRIGHT", -56, 26)
+    frame.status:SetJustifyH("LEFT")
     frame.status:SetTextColor(0.8, 0.72, 0.55)
     createForm()
     local popup = section(frame)

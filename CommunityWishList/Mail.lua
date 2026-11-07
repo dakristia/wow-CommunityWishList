@@ -130,23 +130,37 @@ end
 
 -- The panel rebuilds its rows on every store change while it is shown, so a sent claim leaves the list at once.
 function Mail.CreatePanel(mail)
-    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", UIParent, "BackdropTemplate")
-    panel:SetSize(240, 260)
-    if MailFrame then panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0) else panel:SetPoint("CENTER") end
-    if panel.SetBackdrop then
-        panel:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    local function displayItem(wish)
+        if wish.item then return wish.item end
+        local name = strtrim(wish.name):lower()
+        local results = ns.Items.Search(strtrim(wish.name), 50)
+        if #results >= 50 then return nil end
+        local match
+        for _, item in ipairs(results) do
+            if item.name:lower() == name then
+                if match then return nil end
+                match = item.id
+            end
+        end
+        return match
     end
+
+    -- The panel uses the mailbox's own frame style, so the two read as one window.
+    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", MailFrame or UIParent, "ButtonFrameTemplate")
+    panel:ClearAllPoints()
+    panel:SetSize(300, 260)
+    if MailFrame then panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0) end
+    if ButtonFrameTemplate_HidePortrait then ButtonFrameTemplate_HidePortrait(panel) end
+    if ButtonFrameTemplate_HideButtonBar then ButtonFrameTemplate_HideButtonBar(panel) end
+    if panel.CloseButton then panel.CloseButton:Hide() end
+    panel.Inset:ClearAllPoints()
+    panel.Inset:SetPoint("TOPLEFT", 4, -24)
+    panel.Inset:SetPoint("BOTTOMRIGHT", -6, 6)
+    panel:SetTitle("Wishes to send")
     panel:Hide()
 
-    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    title:SetPoint("TOPLEFT", 12, -12)
-    title:SetText("Wishes to send")
-    panel.title = title
-
     local empty = panel:CreateFontString(nil, "OVERLAY", "GameFontDisable")
-    empty:SetPoint("TOPLEFT", 12, -36)
+    empty:SetPoint("TOPLEFT", 14, -34)
     empty:SetText("Nothing to send.")
     panel.empty = empty
 
@@ -154,18 +168,22 @@ function Mail.CreatePanel(mail)
     local function row(i)
         if rows[i] then return rows[i] end
         local r = CreateFrame("Frame", nil, panel)
-        r:SetSize(216, 24)
+        r:SetSize(276, 28)
+        local divider = r:CreateTexture(nil, "BACKGROUND")
+        divider:SetPoint("BOTTOMLEFT")
+        divider:SetPoint("BOTTOMRIGHT")
+        divider:SetHeight(1)
+        divider:SetColorTexture(0.65, 0.53, 0.33, 0.22)
         r.icon = r:CreateTexture(nil, "ARTWORK")
         r.icon:SetSize(20, 20)
         r.icon:SetPoint("LEFT", 0, 0)
         r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         r.text:SetPoint("LEFT", r.icon, "RIGHT", 4, 0)
-        r.text:SetWidth(110)
+        r.text:SetPoint("RIGHT", -78, 0)
         r.text:SetJustifyH("LEFT")
-        r.button = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-        r.button:SetSize(70, 20)
+        r.text:SetWordWrap(false)
+        r.button = ns.Button(r, "Mail it")
         r.button:SetPoint("RIGHT", 0, 0)
-        r.button:SetText("Mail it")
         rows[i] = r
         return r
     end
@@ -176,7 +194,7 @@ function Mail.CreatePanel(mail)
         for _, h in ipairs(headers) do h:Hide() end
         local groups = mail:ClaimsToSend()
         panel.empty:SetShown(#groups == 0)
-        local y, n = -36, 0
+        local y, n = -34, 0
         for g, group in ipairs(groups) do
             local header = headers[g]
             if not header then
@@ -185,7 +203,7 @@ function Mail.CreatePanel(mail)
             end
             header:ClearAllPoints()
             header:SetPoint("TOPLEFT", 12, y)
-            header:SetText(ns.ShortName(group.recipient))
+            header:SetText(group.recipient)
             header:Show()
             y = y - 16
             for _, entry in ipairs(group.claims) do
@@ -193,20 +211,40 @@ function Mail.CreatePanel(mail)
                 local r = row(n)
                 r:ClearAllPoints()
                 r:SetPoint("TOPLEFT", 12, y)
-                r.icon:SetTexture(ns.Items.Icon(entry.wish.item))
-                r.text:SetText(("%d x %s"):format(entry.claim.qty, entry.wish.name or "?"))
+                local item = displayItem(entry.wish)
+                r.icon:SetTexture(ns.Items.Icon(item) or "Interface\\Icons\\INV_Misc_Note_01")
+                r.icon:Show()
+                r.text:ClearAllPoints()
+                r.text:SetPoint("LEFT", r, "LEFT", 24, 0)
+                r.text:SetPoint("RIGHT", -78, 0)
+                local quality = ns.Items.Quality(item)
+                local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+                local name = ns.Items.Link(item) or (color and color.hex .. entry.wish.name .. "|r") or entry.wish.name
+                r.text:SetText(("%d x %s"):format(entry.claim.qty, name or "?"))
                 r.button:SetScript("OnClick", function() mail:Prepare(entry.wish.id, entry.claim.id) end)
                 r:Show()
-                y = y - 26
+                y = y - 32
             end
         end
-        panel:SetHeight(math.max(80, -y + 12))
+        -- The panel is as tall as the mailbox, and grows past it only when the list needs the room.
+        panel:SetHeight(math.max(MailFrame and MailFrame:GetHeight() or 0, 80, -y + 12))
     end
 
     mail.store:OnChange(function()
         if panel:IsShown() then panel.Refresh() end
     end)
-    panel:SetScript("OnShow", panel.Refresh)
+    panel:SetScript("OnShow", function()
+        if not MailFrame then
+            panel:Hide()
+            return
+        end
+        if panel:GetParent() ~= MailFrame then
+            panel:SetParent(MailFrame)
+            panel:ClearAllPoints()
+            panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0)
+        end
+        panel.Refresh()
+    end)
     mail.panel = panel
     return panel
 end

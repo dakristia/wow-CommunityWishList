@@ -50,10 +50,36 @@ T.add("UI item suggestions select a bag item and Add stores its real name", func
         T.eq(store:List()[1].item, 4537)
         T.eq(store:List()[1].name, "Tel'Abim Banana")
         T.eq(form.selectedItem, nil)
-        T.check(not form.itemIcon:IsShown())
+        T.eq(form.itemIcon.icon:GetTexture(), "Interface\\Icons\\INV_Misc_QuestionMark")
     end)
     C_Container.GetContainerNumSlots, C_Container.GetContainerItemInfo, C_Item.GetItemIconByID = slots, info, icon
     T.check(ok, err)
+end)
+
+T.add("UI content clears native ornaments and fills the available width", function()
+    local _, frame = setup("mine")
+    local form = frame.addForm
+    T.eq(frame:GetWidth(), 760)
+    T.eq(frame:GetHeight(), 520)
+    local _, _, _, formLeft, formTop = form:GetPoint(1)
+    local cornerHeight = C_Texture.GetAtlasInfo("collections-background-corner").height
+    T.check(-formTop >= 60 + cornerHeight + 8, "form clears upper ornaments")
+    local _, _, _, formRight = form:GetPoint(2)
+    local available = frame:GetWidth() + formRight - formLeft
+    local _, _, _, itemX = form.item:GetPoint(1)
+    T.check(itemX >= form.itemIcon:GetWidth(), "item box leaves room for the item slot")
+    T.eq(itemX + form.item:GetWidth() + 24 + form.qty:GetWidth(), available)
+    local _, _, _, qtyX = form.qty:GetPoint(1)
+    T.eq(qtyX, itemX + form.item:GetWidth() + 24)
+    local _, _, _, noteX = form.note:GetPoint(1)
+    T.eq(noteX, itemX, "note lines up with item")
+    T.eq(frame.scrollChild:GetWidth(), available)
+    local _, _, _, listRight, listBottom = frame.scrollFrame:GetPoint(2)
+    T.eq(listRight, formRight)
+    T.check(listBottom >= 38 + cornerHeight + 8, "list and scrollbar clear lower ornaments")
+    local _, _, _, _, listTop = frame.scrollFrame:GetPoint(1)
+    T.eq(listTop, formTop - form:GetHeight() - 10)
+    T.check(frame:GetHeight() + listTop - listBottom >= 100, "My wishes retains usable list height")
 end)
 
 T.add("UI Enter selects suggestions and editing rejects unresolved names", function()
@@ -65,7 +91,7 @@ T.add("UI Enter selects suggestions and editing rejects unresolved names", funct
     T.eq(form.selectedItem, 2447)
     typeItem(form, "unknown item")
     T.eq(form.selectedItem, nil)
-    T.check(not form.itemIcon:IsShown())
+    T.eq(form.itemIcon.icon:GetTexture(), "Interface\\Icons\\INV_Misc_QuestionMark")
     T.check(not form.suggestions:IsShown())
     form.qty:SetText("5")
     click(form.add)
@@ -155,6 +181,27 @@ T.add("UI Toggle and tab buttons save the selected tab", function()
     T.eq(frame.title:GetText(), "Community Wish List")
     T.eq(db.ui.point, "CENTER")
     T.eq(frame.tabs.wishes:GetText(), "Wishes")
+end)
+
+T.add("UI header fits tabs beside search and form columns stay aligned", function()
+    local _, frame = setup("mine")
+    local _, _, _, tabLeft, tabTop = frame.tabs.wishes:GetPoint(1)
+    local tabRight = tabLeft
+    for _, key in ipairs({ "wishes", "mine", "claims", "groups" }) do
+        tabRight = tabRight + frame.tabs[key]:GetWidth()
+    end
+    local _, _, _, searchRight = frame.search:GetPoint(1)
+    local searchLeft = frame:GetWidth() + searchRight - frame.search:GetWidth()
+    T.check(searchLeft - tabRight >= 16, "tab artwork must leave space before search")
+    local _, _, _, _, insetTop = frame.Inset:GetPoint(1)
+    T.eq(tabTop - frame.tabs.wishes:GetHeight(), insetTop, "tabs attach to the content edge")
+    local form = frame.addForm
+    for _, pair in ipairs({ { form.item, form.note }, { form.qty, form.gold } }) do
+        local _, _, _, firstX = pair[1]:GetPoint(1)
+        local _, _, _, secondX = pair[2]:GetPoint(1)
+        T.eq(firstX, secondX, "field left edges align")
+        T.eq(pair[1]:GetWidth(), pair[2]:GetWidth(), "field right edges align")
+    end
 end)
 
 T.add("UI Add creates a quantity 20 wish and a visible row", function()
@@ -286,7 +333,9 @@ end)
 T.add("UI Groups shows the placeholder and hides list rows", function()
     local _, frame = setup("groups")
     T.check(frame.groups:IsShown())
-    T.eq(frame.groups:GetText(), "Groups come in a later version.")
+    T.eq(frame.groups:GetObjectType(), "Frame")
+    T.eq(frame.groups.placeholder:GetParent(), frame.groups)
+    T.eq(frame.groups.placeholder:GetText(), "Groups come in a later version.")
     T.eq(#frame.rows, 0)
     T.check(not frame.scrollFrame:IsShown())
     T.check(not frame.search:IsShown())
@@ -338,7 +387,7 @@ T.add("UI search filters My wishes and My claims with their claim rows", functio
     T.eq(findRow(frame, wish.id, claim.id).claimId, claim.id)
 end)
 
-T.add("UI wish rows have item buttons with item icons and a text-only fallback", function()
+T.add("UI wish rows have item buttons with item icons and a neutral fallback", function()
     local store, frame = setup("mine")
     local getIcon = C_Item.GetItemIconByID
     local icon = getIcon(2447)
@@ -361,7 +410,203 @@ T.add("UI wish rows have item buttons with item icons and a text-only fallback",
     T.check(row.itemButton.icon:GetTexture() ~= nil)
     T.eq(row.priority:GetText(), "|cffaaaaaaLow|r")
     local textWish = assert(store:AddWish({ name = "Unknown herb", qty = 1, guild = true }))
-    T.eq(findRow(frame, textWish.id).itemButton.icon:GetTexture(), "Interface\\Icons\\INV_Misc_QuestionMark")
+    local textRow = findRow(frame, textWish.id)
+    T.check(textRow.itemButton:IsShown())
+    T.eq(textRow.icon:GetTexture(), "Interface\\Icons\\INV_Misc_Note_01")
+    T.eq(textRow.displayItem, nil)
+    T.check(not textRow.itemButton.border:IsShown())
+    local _, _, _, x = textRow.label:GetPoint(1)
+    T.eq(x, 48, "all wishes reserve the same icon space")
+    row = findRow(frame, wish.id)
+    T.check(row.itemButton:IsShown(), "pooled name-only rows restore the item button for items")
+    local _, _, _, itemX = row.label:GetPoint(1)
+    T.eq(itemX, 48)
+end)
+
+T.add("UI legacy exact names use ItemDB presentation without changing wish identity", function()
+    local store, frame = setup("mine")
+    local getIcon, tooltip, modifiedClick = C_Item.GetItemIconByID, GameTooltip, HandleModifiedItemClick
+    local itemLink = ns.Items.Link
+    local hovered, clicked
+    C_Item.GetItemIconByID = function(id) return id == 4537 and 133980 or 134400 end
+    GameTooltip = {
+        SetOwner = function() end, Show = function() end, Hide = function() end,
+        IsOwned = function() return false end,
+        SetItemByID = function(_, id) hovered = id end,
+    }
+    HandleModifiedItemClick = function(value) clicked = value end
+    local ok, err = pcall(function()
+        local wish = assert(store:AddWish({ name = "Tel'Abim Banana", qty = 3, guild = true }))
+        local row = findRow(frame, wish.id)
+        T.eq(row.displayItem, 4537)
+        T.eq(row.icon:GetTexture(), 133980)
+        T.eq(row.label:GetText(), ns.Items.Link(4537))
+        T.check(row.itemButton.border:IsShown())
+        local r, g, b = row.itemButton.border:GetVertexColor()
+        local color = ITEM_QUALITY_COLORS[ns.Items.Quality(4537)]
+        T.eq(r, color.r); T.eq(g, color.g); T.eq(b, color.b)
+        row.itemButton:GetScript("OnEnter")(row.itemButton)
+        click(row.itemButton)
+        T.eq(hovered, 4537)
+        T.eq(clicked, ns.Items.Link(4537))
+        T.eq(store:Get(wish.id).item, nil, "display resolution does not change stored identity")
+
+        ns.Items.Link = function() return nil end
+        local legendary = assert(store:AddWish({ name = "Thunderfury, Blessed Blade of the Windseeker", qty = 1, guild = true }))
+        T.eq(findRow(frame, legendary.id).label:GetText(), ITEM_QUALITY_COLORS[5].hex .. legendary.name .. "|r")
+        ns.Items.Link = itemLink
+
+        local unknown = assert(store:AddWish({ name = "Banana", qty = 1, guild = true }))
+        search(frame, "Banana")
+        search(frame, "Tel'Abim")
+        local pooled = frame.rows[1]
+        T.eq(pooled.displayItem, 4537)
+        search(frame, "Banana")
+        assert(store:DeleteWish(wish.id))
+        T.eq(frame.rows[1], pooled)
+        T.eq(pooled.wishId, unknown.id)
+        T.eq(pooled.displayItem, nil, "partial names must not select a search result")
+        T.eq(pooled.label:GetText(), "Banana")
+        T.eq(pooled.icon:GetTexture(), "Interface\\Icons\\INV_Misc_Note_01")
+        T.check(not pooled.itemButton.border:IsShown())
+        hovered, clicked = nil, nil
+        pooled.itemButton:GetScript("OnEnter")(pooled.itemButton)
+        click(pooled.itemButton)
+        T.eq(hovered, nil)
+        T.eq(clicked, nil)
+
+        local remote = bobWish(store)
+        local claim = assert(store:Claim(remote.id, 1))
+        search(frame, "")
+        click(frame.tabs.claims)
+        local claimRow = findRow(frame, remote.id, claim.id)
+        T.eq(claimRow.displayItem, nil)
+        T.check(not claimRow.itemButton:IsShown())
+        click(claimRow.itemButton)
+        T.eq(clicked, nil)
+    end)
+    C_Item.GetItemIconByID, GameTooltip, HandleModifiedItemClick = getIcon, tooltip, modifiedClick
+    ns.Items.Link = itemLink
+    T.check(ok, err)
+end)
+
+T.add("UI and mail display reject ambiguous truncated and unavailable name searches", function()
+    local itemSearch, itemIcon = ns.Items.Search, ns.Items.Icon
+    local ok, err = pcall(function()
+        T.withMailFrame(function()
+            local exact = { id = 38, name = "Recruit's Shirt" }
+            local capped = { exact }
+            for i = 2, 50 do capped[i] = { id = 1000 + i, name = "Recruit's Shirt variant " .. i } end
+            local cases = {
+                { results = { exact, { id = 6120, name = "RECRUIT'S SHIRT" } } },
+                { results = {} },
+                { results = { { id = 6120, name = "Recruit's Shirt variant" } } },
+                { results = capped },
+                { results = { { id = 38, name = "rEcRuIt'S sHiRt" } }, expected = 38 },
+                { results = capped, explicit = 2447, expected = 2447 },
+            }
+            ns.Items.Icon = function(id) return id and 134400 end
+            for _, case in ipairs(cases) do
+                local calls = 0
+                ns.Items.Search = function(name, limit)
+                    calls = calls + 1
+                    T.eq(name, "Recruit's Shirt")
+                    T.eq(limit, 50)
+                    return case.results
+                end
+                local store, frame = setup("mine")
+                local wish = assert(store:AddWish({ name = "  Recruit's Shirt  ", item = case.explicit, qty = 1, guild = true }))
+                local row = findRow(frame, wish.id)
+                T.eq(row.displayItem, case.expected)
+                local mail = {
+                    store = store,
+                    ClaimsToSend = function()
+                        return { { recipient = "Ann-Realm", claims = { { wish = wish, claim = { qty = 1 } } } } }
+                    end,
+                }
+                local panel = ns.Mail.CreatePanel(mail)
+                panel:Show()
+                local mailRow
+                for _, child in ipairs({ panel:GetChildren() }) do
+                    if child.text then mailRow = child end
+                end
+                T.check(mailRow)
+                if case.expected then
+                    T.eq(row.icon:GetTexture(), 134400)
+                    T.eq(mailRow.icon:GetTexture(), 134400)
+                else
+                    T.eq(row.icon:GetTexture(), "Interface\\Icons\\INV_Misc_Note_01")
+                    T.eq(mailRow.icon:GetTexture(), "Interface\\Icons\\INV_Misc_Note_01")
+                    T.eq(row.label:GetText(), wish.name)
+                    T.eq(mailRow.text:GetText(), "1 x " .. wish.name)
+                    T.check(not row.itemButton.border:IsShown())
+                end
+                T.eq(store:Get(wish.id).item, case.explicit)
+                T.eq(calls, case.explicit and 0 or 2, "explicit IDs bypass both display searches")
+                panel:Hide()
+            end
+        end)
+    end)
+    ns.Items.Search, ns.Items.Icon = itemSearch, itemIcon
+    T.check(ok, err)
+end)
+
+T.add("UI mail recipient headers show full names and legacy rows keep icon space", function()
+    T.withMailFrame(function()
+        local store = T.newStore("Ann-Realm", "Guild")
+        local wish = bobWish(store)
+        assert(store:Claim(wish.id, 1))
+        local mail = ns.Mail.new({ store = store, me = "Ann-Realm", api = {} })
+        local panel = ns.Mail.CreatePanel(mail)
+        panel:Show()
+        local foundHeader, foundRow = false, false
+        for _, region in ipairs({ panel:GetRegions() }) do
+            if region.GetText and region:GetText() == "Bob-Realm" then foundHeader = true end
+        end
+        for _, row in ipairs({ panel:GetChildren() }) do
+            if row.text then
+                foundRow = true
+                T.check(row.icon:IsShown())
+                T.eq(row.text:GetText(), "1 x " .. ns.Items.Link(2447))
+                local _, _, _, x = row.text:GetPoint(1)
+                T.eq(x, 24, "mail text indent")
+            end
+        end
+        panel:Hide()
+        T.check(foundHeader, "mail header includes the realm")
+        T.check(foundRow)
+    end)
+end)
+
+T.add("UI native scrollbar connects wheel and thumb movement to the list", function()
+    local store, frame = setup("mine")
+    local scroll = frame.scrollFrame
+    local bar = scroll.ScrollBar
+    local getRange = scroll.GetVerticalScrollRange
+    local saturate = Saturate
+    -- Wowless stubs scroll ranges and math.saturate, so native scroll wiring needs real values.
+    if _G.__wowless then
+        scroll.GetVerticalScrollRange = function() return 600 end
+        Saturate = function(value) return math.max(0, math.min(1, value)) end
+    end
+    local ok, err = pcall(function()
+        for i = 1, 20 do
+            assert(store:AddWish({ name = "Scroll test herb " .. i, qty = 1, guild = true }))
+        end
+        scroll:UpdateScrollChildRect()
+        local range = scroll:GetVerticalScrollRange()
+        T.check(range > 0, "visible wishes must overflow the list")
+        bar:SetScrollPercentage(0, true)
+        scroll:GetScript("OnScrollRangeChanged")(scroll, 0, range)
+        scroll:GetScript("OnMouseWheel")(scroll, -1)
+        T.check(scroll:GetVerticalScroll() > 0, "mouse wheel scrolls the list")
+        bar:SetScrollPercentage(0.5, true)
+        T.eq(scroll:GetVerticalScroll(), range * 0.5, "thumb position scrolls the list")
+        bar:SetScrollPercentage(0, true)
+    end)
+    scroll.GetVerticalScrollRange = getRange
+    Saturate = saturate
+    T.check(ok, err)
 end)
 
 T.add("UI empty states describe each list tab", function()
@@ -385,7 +630,7 @@ T.add("UI wish cards separate quantity and note and hide zero gold", function()
     local wish = assert(store:AddWish({ name = "Herb", qty = 10, note = "for alchemy", gold = 0, guild = true }))
     local row = findRow(frame, wish.id)
     T.eq(row.label:GetText(), "Herb")
-    T.eq(row.detail:GetText(), "10 of 10 wanted · Ann · for alchemy")
+    T.eq(row.detail:GetText(), "10 of 10 wanted · Ann-Realm · for alchemy")
     T.eq(row:GetHeight(), 48)
     T.eq(row.gold:GetText(), "")
     T.check(not row.gold:IsShown())
@@ -419,6 +664,10 @@ T.add("UI mixed wish and claim rows use their content heights", function()
     T.eq(frame.scrollChild:GetHeight(), 76)
     T.eq(claimRow.label:GetText():match(" · (|c%x+open|r) · "), "|cffffffffopen|r")
     T.check(not claimRow.detail:IsShown())
+    T.check(claimRow.label:GetText():find("Ann-Realm", 1, true))
+    T.check(wishRow.detail:GetText():find("Bob-Realm", 1, true))
+    T.check(not claimRow.itemButton:IsShown())
+    T.eq(claimRow.displayItem, nil)
     T.eq(claimRow.buttons.sent:GetHeight(), 22)
     T.eq(frame.status:GetText(), "1 open wish · 1 claim by you")
     click(frame.tabs.mine)
