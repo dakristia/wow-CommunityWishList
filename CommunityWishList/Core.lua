@@ -15,7 +15,9 @@ ns.PROTOCOL = 1
 function ns.FullName(name)
     if not name or name == "" then return nil end
     if name:find("-", 1, true) then return name end
-    return name .. "-" .. (GetNormalizedRealmName() or "")
+    local realm = GetNormalizedRealmName and GetNormalizedRealmName()
+    if not realm or realm == "" then realm = (GetRealmName() or ""):gsub("[%s%-]", "") end
+    return name .. "-" .. realm
 end
 
 function ns.ShortName(fullName)

@@ -6,4 +6,5 @@ Harness.lua
 Tests_Store.lua
 Tests_Sync.lua
 Tests_UI.lua
+Tests_Notify.lua
 Run.lua
