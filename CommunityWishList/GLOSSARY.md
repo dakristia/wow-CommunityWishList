@@ -14,8 +14,17 @@ The wisher's character that the items are mailed to. Each wish names exactly one
 Who can see a wish: the wisher's guild, one or more groups, or both. The wisher picks it for each wish.
 
 **Group**
-A named set of characters that share wishes with each other, independent of guilds. A character joins a group only by accepting an invite from a member.
+A named set of up to 40 characters that share wishes with each other, independent of guilds. A character joins a group only by accepting an invite from a member, and can be in several groups at once.
 _Avoid_: party (that is the in-game party), community (that is Blizzard's Communities feature)
+
+**Creator**
+The character who made a group. Only the creator renames the group or removes a member.
+
+**Invite**
+A member's offer to a character to join a group. The character becomes a member by accepting it. Any member can invite.
+
+**Member**
+A character in a group. A member is *invited*, then *joined*, and ends as *left* (by its own choice) or *removed* (by the creator). A left or removed character can be invited again.
 
 **Claim**
 A claimer's promise to send part of a wish, for example 40 of 200. A claim is *open*, then *sent*, then *received*. An open claim can instead end as *cancelled* by the claimer or *released* by the wisher.

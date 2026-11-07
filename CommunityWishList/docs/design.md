@@ -161,7 +161,7 @@ Wire framing: every addon message is `"<i>/<n>/<mid>|<chunk>"` and at most 255 b
 
 ## Sync protocol, version 1
 
-Every message is a `Codec`-serialized table with `p = 1` (protocol version) and `k` (kind). A receiver drops messages without `p`, ignores kinds it does not know, and ignores unknown fields, so later versions can add to v1. Only the guild channel exists in this slice. Groups come later over `WHISPER`.
+Every message is a `Codec`-serialized table with `p = 1` (protocol version) and `k` (kind). A receiver drops messages without `p`, ignores kinds it does not know, and ignores unknown fields, so later versions can add to v1. The guild is one scope; groups add more, as described under "Sync over groups".
 
 On the wire, a wish uses short keys so it fits in fewer messages. `Sync` converts with `ToWire` and `FromWire`.
 
@@ -180,6 +180,83 @@ Rules:
 - `W` and `R` go out as `"bulk"`, except a `W` for a local change, which goes out as `"high"`.
 
 `ns.Sync.new{ store, comm, me, guild, now, after, random }` returns a sync. Methods: `sync:Start()` (sends `H`), `sync:OnLocalChange(wish)` and the handler that it registers on `comm`.
+
+## Groups
+
+`docs/adr/0002-group-sync-over-hidden-channels.md` explains the transport. `GLOSSARY.md` defines group, creator, invite and member.
+
+### Group record
+
+```lua
+db.groups[groupId] = {
+    id = "Thrall-Area52:12",   -- creator .. ":" .. seq (the same seq counter as wishes)
+    name = "Raid team",         -- 1 to 32 chars, control chars stripped
+    creator = "Thrall-Area52",
+    key = "k7Qx2p9LmA3z",       -- channel password, 12 random letters and digits, set at creation
+    v = 1,                      -- creator's version: +1 on rename or removal
+    members = {
+        ["Thrall-Area52"] = { state = "joined", v = 1, by = "Thrall-Area52" },
+        ["Jaina-Area52"]  = { state = "invited", v = 1, by = "Thrall-Area52" },
+    },
+}
+```
+
+Member states and who may set them:
+
+| state | rank | set by |
+|-------|------|--------|
+| invited | 0 | any joined member |
+| joined | 1 | the member itself, from invited |
+| left | 2 | the member itself, from joined or invited (declining) |
+| removed | 3 | the creator, from any state |
+
+Every member change sets `v` to the entry's old `v + 1` and `by` to the author. Merging two copies of an entry keeps the one with the higher `v`; on a tie, the higher rank. Re-inviting a left or removed member is a new change with a higher `v`, so it wins. A group holds at most 40 entries in `invited` or `joined`. The creator cannot leave or be removed. Merging the body (`name`) keeps the copy with the higher group `v`; `key`, `creator` and `id` never change.
+
+`Merge` validates: `by` must be a member of the copy being merged for `invited`, equal to the member for `joined` and `left`, and equal to `creator` for `removed`. An entry that breaks the rule is ignored.
+
+### Groups API
+
+`ns.Groups.new{ db, me, now, random }` (`random()` returns a float in [0, 1); `math.random` in WoW). Methods return `nil, "reason"` on a rule break and never raise an error. Each change calls the listeners with `kind` `"group"`.
+
+| Method | Who may |
+|--------|---------|
+| `Create(name)` → group | anyone; the creator starts as `joined` |
+| `Invite(groupId, name)` | a joined member; fails at 40 or when already joined |
+| `Accept(groupId)` | me, while invited |
+| `Leave(groupId)` | me, while invited or joined; not the creator |
+| `Remove(groupId, name)` | the creator |
+| `Rename(groupId, name)` | the creator |
+| `Get(id)`, `List()` (my groups: me joined or invited), `IsMember(groupId, name)` (joined), `Members(groupId)` (joined, sorted) | |
+| `Merge(remoteGroup)` → changed | |
+| `Sig(groupId)` → `v .. "." .. hash of sorted "name=v.rank" member entries` | |
+| `OnChange(fn(kind, group))` | |
+
+### Wishes for groups
+
+`Store:AddWish{ ..., guild = bool, groups = { groupId, ... } }` stores `audience.groups = { [groupId] = true }` for the groups where I am joined (Store gets `opts.isMember(groupId)`). It fails when the result has no guild and no group. A wish can target the guild and groups at once.
+
+### Sync over groups
+
+`Sync` serves several **scopes**. The guild is one scope; each joined group is another. A scope is `{ id, channel, target, includes(wish), accepts(sender) }`:
+
+- Guild: `channel = "GUILD"`, `includes` = `audience.guild == guild()`, `accepts` = anyone.
+- Group: `channel = "CHANNEL"`, `target` = the channel number from `GetChannelName(channelName)`, `includes` = `audience.groups[groupId]`, `accepts(sender)` = `Groups:IsMember(groupId, sender)`.
+
+Every group message carries `g = groupId`. A receiver drops a group message when it does not know the group, I am not joined, or the sender is not a joined member. `H`, `W` and `R` work per scope exactly as for the guild. A wish in two scopes is answered and relayed separately in each, and dedupe is per scope.
+
+New kinds (version 1 clients ignore them):
+
+| Kind | Fields | Where | Sent when |
+|------|--------|-------|-----------|
+| `G` group | `r` = group record in wire form, without `key` | the group's channel | after every local group change, and in answer to `H` when `gs` differs |
+| `I` invite | `r` = group record **with** `key` | `WHISPER` to the invitee | on `Invite` |
+| `A` accepted | `g`, `r` = group record | `WHISPER` to the inviter | on `Accept`, in case the channel is not joined yet |
+
+`H` on a group channel also carries `gs` = my `Sig(groupId)`. A peer whose `Sig` differs answers with `G` after the same jitter as wishes.
+
+Channel name: `"CWL" .. base36(djb2(groupId))`, at most 31 characters. Init joins the channel with `JoinTemporaryChannel(name, key)` for every group where I am joined, removes it from every chat window, leaves it on `Leave` or `removed`, and starts the scope's `H` once `GetChannelName` returns a number.
+
+An `I` from a character opens a confirmation popup ("<name> invites you to the group <group>. Join?"). It never joins on its own. An `I` for a group I already joined only merges the record.
 
 ## Notify
 
