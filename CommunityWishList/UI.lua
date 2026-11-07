@@ -340,7 +340,11 @@ local function createFrame()
         local b = CreateFrame("Button", "CommunityWishListFrameTab" .. i, frame, "PanelTopTabButtonTemplate")
         b:SetID(i)
         b:SetText(tabNames[tab])
-        if i == 1 then b:SetPoint("TOPLEFT", 62, -36) end
+        if i == 1 then
+            b:SetPoint("TOPLEFT", 62, -36)
+        else
+            b:SetPoint("LEFT", frame.tabs[tabs[i - 1]], "RIGHT", 4, 0)
+        end
         b:SetScript("OnClick", function() UI.Show(tab) end)
         frame.tabs[tab] = b
     end
