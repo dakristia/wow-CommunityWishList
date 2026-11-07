@@ -25,6 +25,17 @@ local function section(parent)
 end
 
 local function button(parent, text, width)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetSize(width or 70, 22)
+    b:SetNormalFontObject(GameFontNormalSmall)
+    b:SetHighlightFontObject(GameFontHighlightSmall)
+    b:SetDisabledFontObject(GameFontDisableSmall)
+    b:SetText(text)
+    return b
+end
+
+-- The dropdown look has an arrow, so only buttons that pick from a list use it.
+local function dropdownButton(parent, text, width)
     local b = CreateFrame("Button", nil, parent)
     b:SetSize(width or 70, 22)
     b:SetNormalFontObject(GameFontNormalSmall)
@@ -356,7 +367,7 @@ local function addWish()
     form.error:SetText(wish and "" or reason)
     if wish then
         form.selectedItem = nil
-        form.itemIcon:Hide()
+        form.itemIcon.icon:SetTexture(questionMark)
         form.suggestions:Hide()
         form.item:SetText("")
         form.qty:SetText("")
@@ -373,21 +384,18 @@ local function createForm()
     form:SetPoint("TOPLEFT", frame, "TOPLEFT", 24, -frame.contentTop)
     form:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -56, -frame.contentTop)
     form:SetHeight(146)
-    local leftWidth, rightWidth, gap = contentWidth - 196 - 24, 196, 24
-    form.item = editBox(form, "Item", 0, -20, leftWidth)
+    local slotSize, slotGap = 28, 12
+    local textLeft = slotSize + slotGap
+    local leftWidth, rightWidth, gap = contentWidth - 196 - 24 - textLeft, 196, 24
+    form.item = editBox(form, "Item", textLeft, -20, leftWidth)
     form.itemIcon = CreateFrame("Button", nil, form)
-    form.itemIcon:SetSize(16, 16)
-    form.itemIcon:SetPoint("LEFT", form.item, "LEFT", 0, 0)
-    -- The icon sits inside the edit box, so it needs a higher level to get the mouse for its tooltip.
-    form.itemIcon:SetFrameLevel(form.item:GetFrameLevel() + 2)
+    form.itemIcon:SetSize(slotSize, slotSize)
+    form.itemIcon:SetPoint("RIGHT", form.item, "LEFT", -slotGap, 0)
     form.itemIcon.icon = form.itemIcon:CreateTexture(nil, "ARTWORK")
     form.itemIcon.icon:SetAllPoints()
+    form.itemIcon.icon:SetTexture(questionMark)
     form.itemIcon:SetScript("OnEnter", function(self) itemTooltip(self, form.selectedItem) end)
     form.itemIcon:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
-    -- The item name starts after the icon while the icon shows.
-    form.itemIcon:SetScript("OnShow", function() form.item:SetTextInsets(20, 0, 0, 0) end)
-    form.itemIcon:SetScript("OnHide", function() form.item:SetTextInsets(0, 0, 0, 0) end)
-    form.itemIcon:Hide()
     local suggestions = CreateFrame("Frame", nil, form, "BackdropTemplate")
     form.suggestions = suggestions
     suggestions:SetPoint("TOPLEFT", form.item, "BOTTOMLEFT", 0, -2)
@@ -403,7 +411,6 @@ local function createForm()
         form.selectedItem = resolved
         form.item:SetText(name)
         form.itemIcon.icon:SetTexture(ns.Items.Icon(resolved) or questionMark)
-        form.itemIcon:Show()
         suggestions:Hide()
         form.error:SetText("")
     end
@@ -426,7 +433,7 @@ local function createForm()
     form.item:SetScript("OnTextChanged", function(self, userInput)
         if not userInput then return end
         form.selectedItem = nil
-        form.itemIcon:Hide()
+        form.itemIcon.icon:SetTexture(questionMark)
         local results = ns.Items.Search(self:GetText())
         for i, row in ipairs(suggestions.rows) do
             local item = results[i]
@@ -450,11 +457,11 @@ local function createForm()
     form.item:SetScript("OnEditFocusLost", function()
         C_Timer.After(0.2, function() if not form.item:HasFocus() then suggestions:Hide() end end)
     end)
-    form.qty = editBox(form, "Quantity", leftWidth + gap, -20, rightWidth)
-    form.note = editBox(form, "Note", 0, -62, leftWidth)
+    form.qty = editBox(form, "Quantity", textLeft + leftWidth + gap, -20, rightWidth)
+    form.note = editBox(form, "Note", textLeft, -62, leftWidth)
     form.note:SetMaxLetters(120)
-    form.gold = editBox(form, "Gold", leftWidth + gap, -62, rightWidth)
-    form.prio = button(form, "Normal", 72)
+    form.gold = editBox(form, "Gold", textLeft + leftWidth + gap, -62, rightWidth)
+    form.prio = dropdownButton(form, "Normal", 72)
     form.prio:SetPoint("TOPLEFT", 0, -96)
     form.prio.value = 2
     form.prio:SetScript("OnClick", function(self)
