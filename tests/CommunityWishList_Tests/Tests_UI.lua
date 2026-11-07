@@ -157,6 +157,27 @@ T.add("UI Toggle and tab buttons save the selected tab", function()
     T.eq(frame.tabs.wishes:GetText(), "Wishes")
 end)
 
+T.add("UI header fits tabs beside search and form columns stay aligned", function()
+    local _, frame = setup("mine")
+    local _, _, _, tabLeft, tabTop = frame.tabs.wishes:GetPoint(1)
+    local tabRight = tabLeft
+    for _, key in ipairs({ "wishes", "mine", "claims", "groups" }) do
+        tabRight = tabRight + frame.tabs[key]:GetWidth()
+    end
+    local _, _, _, searchRight = frame.search:GetPoint(1)
+    local searchLeft = frame:GetWidth() + searchRight - frame.search:GetWidth()
+    T.check(searchLeft - tabRight >= 16, "tab artwork must leave space before search")
+    local _, _, _, _, insetTop = frame.Inset:GetPoint(1)
+    T.eq(tabTop - frame.tabs.wishes:GetHeight(), insetTop, "tabs attach to the content edge")
+    local form = frame.addForm
+    for _, pair in ipairs({ { form.item, form.note }, { form.qty, form.gold } }) do
+        local _, _, _, firstX = pair[1]:GetPoint(1)
+        local _, _, _, secondX = pair[2]:GetPoint(1)
+        T.eq(firstX, secondX, "field left edges align")
+        T.eq(pair[1]:GetWidth(), pair[2]:GetWidth(), "field right edges align")
+    end
+end)
+
 T.add("UI Add creates a quantity 20 wish and a visible row", function()
     local store, frame = setup()
     frame.addForm.item:SetText("Peacebloom")
@@ -286,7 +307,9 @@ end)
 T.add("UI Groups shows the placeholder and hides list rows", function()
     local _, frame = setup("groups")
     T.check(frame.groups:IsShown())
-    T.eq(frame.groups:GetText(), "Groups come in a later version.")
+    T.eq(frame.groups:GetObjectType(), "Frame")
+    T.eq(frame.groups.placeholder:GetParent(), frame.groups)
+    T.eq(frame.groups.placeholder:GetText(), "Groups come in a later version.")
     T.eq(#frame.rows, 0)
     T.check(not frame.scrollFrame:IsShown())
     T.check(not frame.search:IsShown())
@@ -361,7 +384,45 @@ T.add("UI wish rows have item buttons with item icons and a text-only fallback",
     T.check(row.itemButton.icon:GetTexture() ~= nil)
     T.eq(row.priority:GetText(), "|cffaaaaaaLow|r")
     local textWish = assert(store:AddWish({ name = "Unknown herb", qty = 1, guild = true }))
-    T.eq(findRow(frame, textWish.id).itemButton.icon:GetTexture(), "Interface\\Icons\\INV_Misc_QuestionMark")
+    local textRow = findRow(frame, textWish.id)
+    T.check(not textRow.itemButton:IsShown())
+    local _, _, _, x = textRow.label:GetPoint(1)
+    T.eq(x, 8, "name-only wishes do not reserve an empty icon slot")
+    row = findRow(frame, wish.id)
+    T.check(row.itemButton:IsShown(), "pooled name-only rows restore the item button for items")
+    local _, _, _, itemX = row.label:GetPoint(1)
+    T.eq(itemX, 48)
+end)
+
+T.add("UI native scrollbar connects wheel and thumb movement to the list", function()
+    local store, frame = setup("mine")
+    local scroll = frame.scrollFrame
+    local bar = scroll.ScrollBar
+    local getRange = scroll.GetVerticalScrollRange
+    local saturate = Saturate
+    -- Wowless stubs scroll ranges and math.saturate, so native scroll wiring needs real values.
+    if _G.__wowless then
+        scroll.GetVerticalScrollRange = function() return 600 end
+        Saturate = function(value) return math.max(0, math.min(1, value)) end
+    end
+    local ok, err = pcall(function()
+        for i = 1, 20 do
+            assert(store:AddWish({ name = "Scroll test herb " .. i, qty = 1, guild = true }))
+        end
+        scroll:UpdateScrollChildRect()
+        local range = scroll:GetVerticalScrollRange()
+        T.check(range > 0, "visible wishes must overflow the list")
+        bar:SetScrollPercentage(0, true)
+        scroll:GetScript("OnScrollRangeChanged")(scroll, 0, range)
+        scroll:GetScript("OnMouseWheel")(scroll, -1)
+        T.check(scroll:GetVerticalScroll() > 0, "mouse wheel scrolls the list")
+        bar:SetScrollPercentage(0.5, true)
+        T.eq(scroll:GetVerticalScroll(), range * 0.5, "thumb position scrolls the list")
+        bar:SetScrollPercentage(0, true)
+    end)
+    scroll.GetVerticalScrollRange = getRange
+    Saturate = saturate
+    T.check(ok, err)
 end)
 
 T.add("UI empty states describe each list tab", function()

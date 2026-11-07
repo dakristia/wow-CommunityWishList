@@ -130,14 +130,10 @@ end
 
 -- The panel rebuilds its rows on every store change while it is shown, so a sent claim leaves the list at once.
 function Mail.CreatePanel(mail)
-    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", UIParent, "BackdropTemplate")
-    panel:SetSize(240, 260)
+    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", UIParent, "CollectionsBackgroundTemplate")
+    panel:ClearAllPoints()
+    panel:SetSize(300, 260)
     if MailFrame then panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0) else panel:SetPoint("CENTER") end
-    if panel.SetBackdrop then
-        panel:SetBackdrop({ bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border", edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 } })
-    end
     panel:Hide()
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -154,16 +150,29 @@ function Mail.CreatePanel(mail)
     local function row(i)
         if rows[i] then return rows[i] end
         local r = CreateFrame("Frame", nil, panel)
-        r:SetSize(216, 24)
+        r:SetSize(276, 28)
+        local divider = r:CreateTexture(nil, "BACKGROUND")
+        divider:SetPoint("BOTTOMLEFT")
+        divider:SetPoint("BOTTOMRIGHT")
+        divider:SetHeight(1)
+        divider:SetColorTexture(0.65, 0.53, 0.33, 0.22)
         r.icon = r:CreateTexture(nil, "ARTWORK")
         r.icon:SetSize(20, 20)
         r.icon:SetPoint("LEFT", 0, 0)
         r.text = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         r.text:SetPoint("LEFT", r.icon, "RIGHT", 4, 0)
-        r.text:SetWidth(110)
+        r.text:SetPoint("RIGHT", -78, 0)
         r.text:SetJustifyH("LEFT")
-        r.button = CreateFrame("Button", nil, r, "UIPanelButtonTemplate")
-        r.button:SetSize(70, 20)
+        r.text:SetWordWrap(false)
+        r.button = CreateFrame("Button", nil, r)
+        r.button:SetSize(70, 22)
+        r.button:SetNormalFontObject(GameFontNormalSmall)
+        r.button:SetHighlightFontObject(GameFontHighlightSmall)
+        r.button:SetDisabledFontObject(GameFontDisableSmall)
+        r.button:SetNormalAtlas("common-dropdown-b-button")
+        r.button:SetPushedAtlas("common-dropdown-b-button-pressed")
+        r.button:SetHighlightAtlas("common-dropdown-b-button-hover", "BLEND")
+        r.button:SetDisabledAtlas("common-dropdown-b-button-disabled")
         r.button:SetPoint("RIGHT", 0, 0)
         r.button:SetText("Mail it")
         rows[i] = r
@@ -194,10 +203,14 @@ function Mail.CreatePanel(mail)
                 r:ClearAllPoints()
                 r:SetPoint("TOPLEFT", 12, y)
                 r.icon:SetTexture(ns.Items.Icon(entry.wish.item))
+                r.icon:SetShown(entry.wish.item ~= nil)
+                r.text:ClearAllPoints()
+                r.text:SetPoint("LEFT", entry.wish.item and 24 or 0, 0)
+                r.text:SetPoint("RIGHT", -78, 0)
                 r.text:SetText(("%d x %s"):format(entry.claim.qty, entry.wish.name or "?"))
                 r.button:SetScript("OnClick", function() mail:Prepare(entry.wish.id, entry.claim.id) end)
                 r:Show()
-                y = y - 26
+                y = y - 32
             end
         end
         panel:SetHeight(math.max(80, -y + 12))
