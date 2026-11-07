@@ -135,7 +135,7 @@ function Sync:Receive(text, channel, sender)
                 for pending in pairs(self.pending) do pending.requests[id] = true end
                 local wish = self.store:Get(id)
                 if included(self, wish) then
-                    local owner = wish.owner == self.me
+                    local owner = self.store:IsMe(wish.owner)
                     later(self, owner and self.random(0, 0.5) or self.random(1, 4), function(pending)
                         if not pending.wishes[id] then sendWish(self, id) end
                     end)

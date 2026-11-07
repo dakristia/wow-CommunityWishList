@@ -49,11 +49,12 @@ local function wrapLocal(store, method, after)
 end
 
 local function setupStore()
-    local store = ns.Store.new{ db = CommunityWishListDB, me = me, now = time, guild = guildName }
+    local store = ns.Store.new{ db = CommunityWishListDB, me = me, now = time, guild = guildName,
+        isMe = function(name) return name == ns.Me() or ns.IsMyStoredName(name) end }
     ns.store = store
     -- A "wish" change on my own wish is always mine to broadcast, so the auto-close that Merge triggers also goes out.
     store:OnChange(function(kind, wish)
-        if ns.sync and (localDepth > 0 or (kind == "wish" and wish.owner == me)) then ns.sync:OnLocalChange(wish) end
+        if ns.sync and (localDepth > 0 or (kind == "wish" and store:IsMe(wish.owner))) then ns.sync:OnLocalChange(wish) end
     end)
     for _, method in ipairs({ "AddWish", "UpdateWish", "CloseWish", "DeleteWish", "CancelClaim", "ReleaseClaim", "MarkReceived" }) do
         wrapLocal(store, method)
@@ -185,7 +186,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         CommunityWishListDB = CommunityWishListDB or {}
     elseif event == "PLAYER_LOGIN" then
         -- The store starts here and not at ADDON_LOADED, because the realm name can still be nil there.
-        me = ns.FullName(UnitName("player"))
+        me = ns.Me()
         setupStore()
         setupMail()
         ns.UI.Attach(ns.store, CommunityWishListDB)

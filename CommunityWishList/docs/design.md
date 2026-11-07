@@ -28,7 +28,12 @@ Code style follows `src/TodoList/TodoList.lua`: 4-space indent, `local` function
 
 ## Identity
 
-A character is always written as `Name-Realm`, for example `Thrall-Area52`. `ns.FullName(name)` appends `-` plus `GetNormalizedRealmName()` when the name has no `-`. Every name that enters the store goes through it.
+A character is always written as `First Surname-Realm`, for example `Crayons Bonk-Area52`. The surname is optional, so `Thrall-Area52` is also valid. On WoW: Forever the realm can be a hidden internal one such as `CAMWOWEU5Realm4PvP`.
+
+- `ns.FullName(name)` appends `-` plus the normalised realm when the name has no `-`. Every name that enters the store goes through it.
+- `ns.UnitKey(unit)` builds the key for a unit. `UnitName` returns either a realm or a surname as its second value, so `UnitKey` decides which one it is. It returns `nil` when the client hides the identity.
+- `ns.Me()` is the cached `ns.UnitKey("player")`. The store never rewrites older records of this character (`Crayons-Realm`), because peers would see a different owner. Instead `Store.new` takes `isMe(name)`, which accepts both keys through `ns.IsMyStoredName`, and every ownership check uses `store:IsMe`. New records use `ns.Me()`.
+- `ns.ShortName(key)` gives the display name: everything before the last `-`. The UI never shows the realm.
 
 ## Saved variables
 

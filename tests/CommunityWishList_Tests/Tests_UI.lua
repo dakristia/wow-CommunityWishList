@@ -629,7 +629,7 @@ T.add("UI mail recipient headers show full names and legacy rows keep icon space
         panel:Show()
         local foundHeader, foundRow = false, false
         for _, region in ipairs({ panel:GetRegions() }) do
-            if region.GetText and region:GetText() == "Bob-Realm" then foundHeader = true end
+            if region.GetText and region:GetText() == "Bob" then foundHeader = true end
         end
         for _, row in ipairs({ panel:GetChildren() }) do
             if row.text then
@@ -641,7 +641,7 @@ T.add("UI mail recipient headers show full names and legacy rows keep icon space
             end
         end
         panel:Hide()
-        T.check(foundHeader, "mail header includes the realm")
+        T.check(foundHeader, "mail header shows the display name")
         T.check(foundRow)
     end)
 end)
@@ -698,7 +698,7 @@ T.add("UI wish cards separate quantity and note and hide zero gold", function()
     local wish = assert(store:AddWish({ name = "Herb", qty = 10, note = "for alchemy", gold = 0, guild = true }))
     local row = findRow(frame, wish.id)
     T.eq(row.label:GetText(), "Herb")
-    T.eq(row.detail:GetText(), "10 of 10 wanted · Ann-Realm · for alchemy")
+    T.eq(row.detail:GetText(), "10 of 10 wanted · Ann · for alchemy")
     T.eq(row:GetHeight(), 48)
     T.eq(row.gold:GetText(), "")
     T.check(not row.gold:IsShown())
@@ -732,8 +732,10 @@ T.add("UI mixed wish and claim rows use their content heights", function()
     T.eq(frame.scrollChild:GetHeight(), 76)
     T.eq(claimRow.label:GetText():match(" · (|c%x+open|r) · "), "|cffffffffopen|r")
     T.check(not claimRow.detail:IsShown())
-    T.check(claimRow.label:GetText():find("Ann-Realm", 1, true))
-    T.check(wishRow.detail:GetText():find("Bob-Realm", 1, true))
+    T.check(claimRow.label:GetText():find("Ann", 1, true))
+    T.check(not claimRow.label:GetText():find("Realm", 1, true))
+    T.check(wishRow.detail:GetText():find("Bob", 1, true))
+    T.check(not wishRow.detail:GetText():find("Realm", 1, true))
     T.check(not claimRow.itemButton:IsShown())
     T.eq(claimRow.displayItem, nil)
     T.eq(claimRow.buttons.sent:GetHeight(), 22)
