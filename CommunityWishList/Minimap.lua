@@ -13,7 +13,7 @@ function MinimapButton.Attach(db)
     if not launcher then
         launcher = LibStub("LibDataBroker-1.1"):NewDataObject("CommunityWishList", {
             type = "launcher",
-            icon = "Interface\\Icons\\INV_Misc_Note_01",
+            icon = ns.ICON,
             OnClick = function(_, mouseButton)
                 if mouseButton == "LeftButton" then ns.UI.Toggle() end
             end,

@@ -2,6 +2,7 @@
 ## Version: @project-version@
 ## Title: Community Wish List
 ## Notes: Shared wish list for your guild and groups. Use /cwl to toggle.
+## IconTexture: Interface\AddOns\CommunityWishList\Media\icon
 ## Author: Daniel
 ## SavedVariables: CommunityWishListDB
 ## Dependencies: ItemDB

@@ -9,6 +9,7 @@ CommunityWishList = ns
 ns.ADDON_NAME = ADDON_NAME
 ns.PREFIX = "CWList"
 ns.PROTOCOL = 1
+ns.ICON = "Interface\\AddOns\\CommunityWishList\\Media\\icon"
 
 -- Every character in the store is "First Surname-Realm" (the surname is optional), because CHAT_MSG_ADDON
 -- and the guild roster leave the realm off for characters on your own realm. See docs/design.md.
