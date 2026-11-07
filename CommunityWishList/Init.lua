@@ -68,6 +68,51 @@ local function setupStore()
         isOnline = isOnline, whisper = whisper, alert = alert, after = C_Timer.After }
 end
 
+local function mailApi()
+    return {
+        setRecipient = function(name) SendMailNameEditBox:SetText(name) end,
+        setSubject = function(text) SendMailSubjectEditBox:SetText(text) end,
+        showSendTab = function()
+            if MailFrameTab_OnClick and MailFrameTab2 then MailFrameTab_OnClick(MailFrameTab2, 2) end
+        end,
+        attach = function(bag, slot)
+            C_Container.PickupContainerItem(bag, slot)
+            ClickSendMailItemButton()
+        end,
+        numSlots = function(bag) return C_Container.GetContainerNumSlots(bag) end,
+        getContainerItem = function(bag, slot)
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if info then return info.itemID, info.stackCount end
+        end,
+        getSendItem = function(i)
+            local _, itemID, _, count = GetSendMailItem(i)
+            return itemID, count
+        end,
+        getInboxHeader = function(index)
+            local _, _, sender = GetInboxHeaderInfo(index)
+            return sender
+        end,
+        getInboxItem = function(index, a)
+            local _, itemID, _, count = GetInboxItem(index, a)
+            return itemID, count
+        end,
+    }
+end
+
+local function setupMail()
+    ns.mail = ns.Mail.new{ store = ns.store, me = me, api = mailApi() }
+    -- The hooks run after the original call, so a failure in them can never block the player's mail.
+    if _G.SendMail then
+        hooksecurefunc("SendMail", function(recipient) ns.mail:OnSendMail(recipient) end)
+    end
+    if _G.TakeInboxItem then
+        hooksecurefunc("TakeInboxItem", function(index, attachment) ns.mail:OnTakeItem(index, attachment) end)
+    end
+    if _G.AutoLootMailItem then
+        hooksecurefunc("AutoLootMailItem", function(index) ns.mail:OnTakeItem(index) end)
+    end
+end
+
 local function printUsage()
     ns.Print("/cwl - show or hide the window")
     ns.Print("/cwl add <qty> <item link or name> - add a wish")
@@ -130,6 +175,10 @@ frame:RegisterEvent("ADDON_LOADED")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("CHAT_MSG_ADDON")
 frame:RegisterEvent("GUILD_ROSTER_UPDATE")
+frame:RegisterEvent("MAIL_SHOW")
+frame:RegisterEvent("MAIL_CLOSED")
+frame:RegisterEvent("MAIL_SEND_SUCCESS")
+frame:RegisterEvent("MAIL_FAILED")
 frame:SetScript("OnEvent", function(_, event, ...)
     if event == "ADDON_LOADED" then
         if ... ~= ADDON_NAME then return end
@@ -138,6 +187,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
         -- The store starts here and not at ADDON_LOADED, because the realm name can still be nil there.
         me = ns.FullName(UnitName("player"))
         setupStore()
+        setupMail()
         ns.UI.Attach(ns.store, CommunityWishListDB)
         ns.Minimap.Attach(CommunityWishListDB)
         SLASH_COMMUNITYWISHLIST1 = "/cwl"
@@ -146,6 +196,17 @@ frame:SetScript("OnEvent", function(_, event, ...)
         onLogin()
     elseif event == "CHAT_MSG_ADDON" then
         if ns.comm then ns.comm:Receive(...) end
+    elseif event == "MAIL_SHOW" then
+        if ns.mail then
+            ns.mail.panel = ns.mail.panel or ns.Mail.CreatePanel(ns.mail)
+            ns.mail.panel:Show()
+        end
+    elseif event == "MAIL_CLOSED" then
+        if ns.mail and ns.mail.panel then ns.mail.panel:Hide() end
+    elseif event == "MAIL_SEND_SUCCESS" then
+        if ns.mail then ns.mail:OnSendSuccess() end
+    elseif event == "MAIL_FAILED" then
+        if ns.mail then ns.mail:OnSendFailed() end
     elseif event == "GUILD_ROSTER_UPDATE" then
         rosterCache = nil
         if ns.sync and guildName() then startSync() end

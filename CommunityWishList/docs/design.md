@@ -17,6 +17,7 @@ ItemDB is a required addon dependency. It provides item names, links and search 
 | `Comm.lua` | `ns.Comm`: chunking, reassembly, throttled send queue |
 | `Sync.lua` | `ns.Sync`: the guild protocol on top of `Store` and `Comm` |
 | `Notify.lua` | `ns.Notify`: claim alerts, whispers |
+| `Mail.lua` | `ns.Mail`: the mail slice (prepare a send, detect sent and received mail) and its side panel |
 | `UI.lua` | `CommunityWishListFrame` and its tabs |
 | `Minimap.lua` | The minimap button |
 | `Init.lua` | Wires everything to real WoW APIs, events and slash commands |
@@ -185,6 +186,17 @@ Rules:
 - When a `"claim_new"` change arrives for a wish whose owner is `me` and the claim is not in `db.seen`, `Notify` alerts and adds the claim to `seen`. The alert is a chat line, `"Jaina will send you 40 x [Peacebloom]"`, plus a sound and a line in `UIErrorsFrame`.
 - After login, once the first sync settles (10 seconds after `Start`), it alerts for unseen claims in one summary line.
 - When I claim, and the wisher's recipient or owner is online in the guild roster, it whispers `"I will send you 40 x [Peacebloom] (CommunityWishList)"`. When I mark a claim sent, it whispers `"I have sent you ..."` in the same way.
+
+## Mail
+
+`ns.Mail.new{ store, me, api }` holds the mail rules. `api` is a table of the WoW functions it calls, so tests pass fakes and `Init.lua` passes the real ones. `Init.lua` registers `MAIL_SHOW`, `MAIL_CLOSED`, `MAIL_SEND_SUCCESS` and `MAIL_FAILED`, and hooks `SendMail`, `TakeInboxItem` and `AutoLootMailItem`.
+
+- `ClaimsToSend()` lists my open claims on open wishes, grouped by recipient, oldest first.
+- `Prepare(wishId, claimId)` opens the send tab, fills the recipient and the subject `"CommunityWishList: <qty> x <item>"`, and attaches whole bag stacks of the item. It takes the largest stacks that still fit under the claim quantity. Attaching is best effort: each attach runs in `pcall`, and when none fits the player attaches by hand.
+- Auto-sent: `OnSendMail` (the `SendMail` hook) records the recipient and the attachments. On `MAIL_SEND_SUCCESS`, my open claims for those items whose wish recipient or owner is that recipient become `sent`, oldest first, while the sent count covers the claim quantity. `MAIL_FAILED` drops the record.
+- Auto-received: when I take mail (`TakeInboxItem` or `AutoLootMailItem`) as the owner or recipient of a wish, the sender's `sent` claims for the taken item become `received`, oldest first, while the taken count covers them.
+
+`ns.Mail.CreatePanel(mail)` builds a small panel on the right of `MailFrame`. It lists `ClaimsToSend()` with a "Mail it" button that calls `Prepare`, and it says "Nothing to send." when the list is empty. `Init.lua` creates it on the first `MAIL_SHOW` and shows and hides it with the mail window.
 
 ## UI
 
