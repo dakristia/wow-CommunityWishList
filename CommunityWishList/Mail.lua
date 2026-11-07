@@ -30,7 +30,7 @@ local function collect(self, state, match)
 end
 
 function Mail:ClaimsToSend()
-    local entries = collect(self, "open", function(wish, claim) return wish.state == "open" and claim.by == self.me end)
+    local entries = collect(self, "open", function(wish, claim) return wish.state == "open" and self.store:IsMe(claim.by) end)
     local groups, order = {}, {}
     for _, entry in ipairs(entries) do
         local recipient = entry.wish.recipient or entry.wish.owner
@@ -59,7 +59,7 @@ end
 function Mail:Prepare(wishId, claimId)
     local wish = self.store:Get(wishId)
     local claim = wish and wish.claims and wish.claims[claimId]
-    if not claim or claim.state ~= "open" or claim.by ~= self.me then return 0 end
+    if not claim or claim.state ~= "open" or not self.store:IsMe(claim.by) then return 0 end
     self.api.showSendTab()
     self.api.setRecipient(ns.ShortName(wish.recipient or wish.owner))
     self.api.setSubject(("CommunityWishList: %d x %s"):format(claim.qty, wish.name or "?"))
@@ -94,7 +94,7 @@ function Mail:OnSendSuccess()
     for _, item in ipairs(pending.items) do sentByItem[item.itemID] = (sentByItem[item.itemID] or 0) + item.count end
     for itemID, sent in pairs(sentByItem) do
         local entries = collect(self, "open", function(wish, claim)
-            return claim.by == self.me and wish.item == itemID
+            return self.store:IsMe(claim.by) and wish.item == itemID
                 and ((wish.recipient or ""):lower() == pending.recipient or wish.owner:lower() == pending.recipient)
         end)
         for _, entry in ipairs(entries) do
@@ -110,7 +110,7 @@ end
 
 local function receive(self, sender, itemID, count)
     local entries = collect(self, "sent", function(wish, claim)
-        return wish.item == itemID and claim.by == sender and (wish.owner == self.me or wish.recipient == self.me)
+        return wish.item == itemID and claim.by == sender and (self.store:IsMe(wish.owner) or self.store:IsMe(wish.recipient))
     end)
     for _, entry in ipairs(entries) do
         if count < entry.claim.qty then break end

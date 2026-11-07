@@ -49,11 +49,12 @@ local function wrapLocal(store, method, after)
 end
 
 local function setupStore()
-    local store = ns.Store.new{ db = CommunityWishListDB, me = me, now = time, guild = guildName }
+    local store = ns.Store.new{ db = CommunityWishListDB, me = me, now = time, guild = guildName,
+        isMe = function(name) return name == ns.Me() or ns.IsMyStoredName(name) end }
     ns.store = store
     -- A "wish" change on my own wish is always mine to broadcast, so the auto-close that Merge triggers also goes out.
     store:OnChange(function(kind, wish)
-        if ns.sync and (localDepth > 0 or (kind == "wish" and wish.owner == me)) then ns.sync:OnLocalChange(wish) end
+        if ns.sync and (localDepth > 0 or (kind == "wish" and store:IsMe(wish.owner))) then ns.sync:OnLocalChange(wish) end
     end)
     for _, method in ipairs({ "AddWish", "UpdateWish", "CloseWish", "DeleteWish", "CancelClaim", "ReleaseClaim", "MarkReceived" }) do
         wrapLocal(store, method)
@@ -66,28 +67,6 @@ local function setupStore()
     end)
     ns.notify = ns.Notify.new{ store = store, db = CommunityWishListDB, me = me,
         isOnline = isOnline, whisper = whisper, alert = alert, after = C_Timer.After }
-end
-
--- Records written before surnames were handled name this character "Crayons-Realm" instead of
--- "Crayons Bonk-Realm". Only this account's own names are rewritten, never another player's.
-local function migrateOwnRecords(db)
-    if not me then return end
-    local function mine(name)
-        return type(name) == "string" and name ~= me and ns.IsMyStoredName(name)
-    end
-    for _, wish in pairs(db.wishes) do
-        if mine(wish.owner) then wish.owner = me end
-        if mine(wish.recipient) then wish.recipient = me end
-        for _, claim in pairs(wish.claims or {}) do
-            if mine(claim.by) then claim.by = me end
-        end
-    end
-    for name, count in pairs(db.seq) do
-        if mine(name) then
-            db.seq[me] = math.max(db.seq[me] or 0, count)
-            db.seq[name] = nil
-        end
-    end
 end
 
 local function mailApi()
@@ -209,7 +188,6 @@ frame:SetScript("OnEvent", function(_, event, ...)
         -- The store starts here and not at ADDON_LOADED, because the realm name can still be nil there.
         me = ns.Me()
         setupStore()
-        migrateOwnRecords(CommunityWishListDB)
         setupMail()
         ns.UI.Attach(ns.store, CommunityWishListDB)
         ns.Minimap.Attach(CommunityWishListDB)

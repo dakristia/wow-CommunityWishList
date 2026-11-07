@@ -19,6 +19,10 @@ local function notify(self, kind, wish, claim)
     for _, fn in ipairs(self.listeners) do fn(kind, wish, claim) end
 end
 
+function Store:IsMe(name)
+    return type(name) == "string" and self.isMe(name) and true or false
+end
+
 function Store.new(opts)
     opts = opts or {}
     local db = opts.db or {}
@@ -27,7 +31,10 @@ function Store.new(opts)
     db.seq = db.seq or {}
     db.seen = db.seen or {}
     db.ui = db.ui or { point = "CENTER", x = 0, y = 0, tab = "wanted", minimap = { angle = 200 } }
-    return setmetatable({ db = db, me = fullname(opts.me), now = opts.now or time, guild = opts.guild or function() end, isMember = opts.isMember or function() return false end, listeners = {} }, Store)
+    local me = fullname(opts.me)
+    -- isMe also accepts the older key of this character ("Crayons-Realm" for "Crayons Bonk-Realm"), so records written before surnames were handled stay mine.
+    local isMe = opts.isMe or function(name) return name == me end
+    return setmetatable({ db = db, me = me, isMe = isMe, now = opts.now or time, guild = opts.guild or function() end, isMember = opts.isMember or function() return false end, listeners = {} }, Store)
 end
 
 local function nextId(self)
@@ -92,7 +99,7 @@ end
 
 local function owned(self, id)
     local wish = self:Get(id)
-    if not wish or wish.owner ~= self.me or wish.state == "deleted" then return nil, "not owner or wish missing" end
+    if not wish or not self:IsMe(wish.owner) or wish.state == "deleted" then return nil, "not owner or wish missing" end
     return wish
 end
 
@@ -157,7 +164,7 @@ function Store:Remaining(wish)
 end
 
 function Store:AutoClose(wish)
-    if wish.owner == self.me and wish.state == "open" and wish.qty and self:SentQty(wish) >= wish.qty then
+    if self:IsMe(wish.owner) and wish.state == "open" and wish.qty and self:SentQty(wish) >= wish.qty then
         wish.state = "closed"
         bump(self, wish)
     end
@@ -165,7 +172,7 @@ end
 
 function Store:Claim(id, qty)
     local wish = self:Get(id)
-    if not wish or wish.state ~= "open" or not self.me or wish.owner == self.me then return nil, "cannot claim wish" end
+    if not wish or wish.state ~= "open" or not self.me or self:IsMe(wish.owner) then return nil, "cannot claim wish" end
     if not integer(qty, 1) or qty > self:Remaining(wish) then return nil, "invalid quantity" end
     local claim = { id = nextId(self), by = self.me, qty = qty, state = "open", created = self.now() }
     wish.claims[claim.id] = claim
@@ -176,7 +183,7 @@ end
 local function transition(self, wishId, claimId, role, from, state)
     local wish = self:Get(wishId)
     local claim = wish and wish.claims and type(claimId) == "string" and wish.claims[claimId]
-    if not claim or wish.state == "deleted" or claim.state ~= from or (role == "owner" and wish.owner ~= self.me) or (role == "claimer" and claim.by ~= self.me) then
+    if not claim or wish.state == "deleted" or claim.state ~= from or (role == "owner" and not self:IsMe(wish.owner)) or (role == "claimer" and not self:IsMe(claim.by)) then
         return nil, "invalid claim transition"
     end
     claim.state = state
@@ -197,13 +204,16 @@ function Store:List(filter)
     filter = filter or {}
     local owner = filter.owner and fullname(filter.owner)
     local claimer = filter.claimer and fullname(filter.claimer)
+    local ownerIsMe, claimerIsMe = owner and owner == self.me, claimer and claimer == self.me
     local list = {}
     for _, wish in pairs(self.db.wishes) do
         local matches = not filter.claimer
         if claimer then
-            for _, claim in pairs(wish.claims or {}) do if claim.by == claimer then matches = true end end
+            for _, claim in pairs(wish.claims or {}) do
+                if claim.by == claimer or (claimerIsMe and self:IsMe(claim.by)) then matches = true end
+            end
         end
-        if matches and (not filter.owner or owner == wish.owner) and (not filter.state or filter.state == wish.state) and (filter.includeDeleted or wish.state ~= "deleted") then
+        if matches and (not filter.owner or owner == wish.owner or (ownerIsMe and self:IsMe(wish.owner))) and (not filter.state or filter.state == wish.state) and (filter.includeDeleted or wish.state ~= "deleted") then
             list[#list + 1] = wish
         end
     end

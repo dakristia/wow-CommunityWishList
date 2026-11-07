@@ -33,6 +33,41 @@ T.add("Names IsMyStoredName accepts the first-name-only key and rejects another 
     end)
 end)
 
+local function legacyStore(isMe)
+    local clock = T.fakeClock()
+    local function guild() return "Guild" end
+    local store = ns.Store.new({ db = {}, me = "Crayons Bonk-Realm", now = clock.now, guild = guild, isMe = isMe })
+    local old = ns.Store.new({ db = {}, me = "Crayons-Realm", now = clock.now, guild = guild })
+    local wish = assert(old:AddWish({ name = "Herb", qty = 2, guild = true }))
+    assert(store:Merge(old:Get(wish.id)))
+    local bob = ns.Store.new({ db = {}, me = "Bob-Realm", now = clock.now, guild = guild })
+    local theirs = assert(bob:AddWish({ name = "Ore", qty = 2, guild = true }))
+    assert(store:Merge(bob:Get(theirs.id)))
+    return store, wish, theirs
+end
+
+local function acceptsOldKey(name) return name == "Crayons Bonk-Realm" or name == "Crayons-Realm" end
+
+T.add("Names a store with isMe owns records under the older key", function()
+    local store, wish, theirs = legacyStore(acceptsOldKey)
+    local found = false
+    for _, w in ipairs(store:List({ owner = "Crayons Bonk-Realm" })) do found = found or w.id == wish.id end
+    T.check(found, "List owner includes the older key")
+    T.check(store:Claim(wish.id, 1) == nil, "cannot claim my own wish")
+    local claim = assert(store:Claim(theirs.id, 1))
+    claim.by = "Crayons-Realm"
+    assert(store:MarkSent(theirs.id, claim.id))
+    assert(store:CloseWish(wish.id))
+    assert(store:DeleteWish(wish.id))
+end)
+
+T.add("Names a store without isMe keeps exact matching", function()
+    local store, wish = legacyStore(nil)
+    for _, w in ipairs(store:List({ owner = "Crayons Bonk-Realm" })) do T.check(w.id ~= wish.id) end
+    T.check(store:CloseWish(wish.id) == nil)
+    T.check(store:DeleteWish(wish.id) == nil)
+end)
+
 T.add("Names UnitKey puts the surname back on", function()
     stubbed(_G, {
         UnitName = function() return "Crayons", "Bonk" end,

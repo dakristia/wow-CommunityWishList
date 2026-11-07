@@ -288,7 +288,7 @@ refresh = function()
         -- Wishes uses two passes so each remaining-quantity group keeps the store's order.
         for pass = 1, 2 do
             for _, wish in ipairs(wishes) do
-                if wish.owner ~= store.me and matchesSearch(wish) and ((store:Remaining(wish) > 0) == (pass == 1)) then
+                if not store:IsMe(wish.owner) and matchesSearch(wish) and ((store:Remaining(wish) > 0) == (pass == 1)) then
                     local row = wishRow(wish)
                     action(row, "claim", "Claim", function() showClaim(wish); return true end)
                 end
@@ -306,7 +306,7 @@ refresh = function()
                     action(row, "delete", "Delete", function() return store:DeleteWish(wish.id) end)
                 end
                 for _, claim in ipairs(sortedClaims(wish)) do
-                    if tab == "mine" or claim.by == store.me then
+                    if tab == "mine" or store:IsMe(claim.by) then
                         local claimRow = rowFor(wish, claim)
                         claimRow.label:SetText(ns.ShortName(claim.by) .. " · " .. claim.qty .. " · |c"
                             .. (stateColors[claim.state] or "ff999999") .. claim.state .. "|r · " .. age(claim.created))
@@ -330,7 +330,7 @@ refresh = function()
     for _, wish in ipairs(store:List()) do
         if wish.state == "open" then open = open + 1 end
         for _, claim in pairs(wish.claims) do
-            if claim.by == store.me and (claim.state == "open" or claim.state == "sent") then claimed = claimed + 1 end
+            if store:IsMe(claim.by) and (claim.state == "open" or claim.state == "sent") then claimed = claimed + 1 end
         end
     end
     frame.status:SetText(open .. (open == 1 and " open wish" or " open wishes") .. " · "
