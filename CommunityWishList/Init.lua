@@ -85,8 +85,11 @@ local function handleSlash(msg)
             printUsage()
             return
         end
-        local id = tonumber(item:match("|Hitem:(%d+)"))
-        local name = item:match("%[(.-)%]") or item
+        local id, name = ns.Items.Resolve(item)
+        if not id then
+            ns.Print("Pick an item from the list, or shift-click an item link.")
+            return
+        end
         local wish, err = ns.store:AddWish{ item = id, name = name, qty = tonumber(qty), guild = true }
         if wish then
             ns.Print("Added %s x %d.", wish.name, wish.qty)

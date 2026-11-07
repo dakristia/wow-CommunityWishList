@@ -20,6 +20,110 @@ local function setup(tab)
     return store, CommunityWishListFrame, db
 end
 
+local function typeItem(form, text)
+    form.item:SetText(text)
+    form.item:GetScript("OnTextChanged")(form.item, true)
+end
+
+T.add("UI item suggestions select a bag item and Add stores its real name", function()
+    local store, frame = setup()
+    local form = frame.addForm
+    local slots, info, icon = C_Container.GetContainerNumSlots, C_Container.GetContainerItemInfo, C_Item.GetItemIconByID
+    C_Container.GetContainerNumSlots = function(bag) return bag == 0 and 1 or 0 end
+    C_Container.GetContainerItemInfo = function() return { itemID = 4537 } end
+    C_Item.GetItemIconByID = function() return 134400 end
+    local ok, err = pcall(function()
+        typeItem(form, "banana")
+        T.check(form.suggestions:IsShown())
+        T.eq(form.suggestions.rows[1].itemID, 4537)
+        T.eq(form.suggestions.rows[2].itemID, 4601)
+        T.check(not form.suggestions.rows[3]:IsShown())
+        click(form.suggestions.rows[1])
+        T.eq(form.selectedItem, 4537)
+        T.eq(form.item:GetText(), "Tel'Abim Banana")
+        T.check(not form.suggestions:IsShown())
+        T.check(form.itemIcon:IsShown())
+        T.eq(form.itemIcon.icon:GetTexture(), 134400)
+        form.qty:SetText("5")
+        click(form.add)
+        T.eq(#store:List(), 1)
+        T.eq(store:List()[1].item, 4537)
+        T.eq(store:List()[1].name, "Tel'Abim Banana")
+        T.eq(form.selectedItem, nil)
+        T.check(not form.itemIcon:IsShown())
+    end)
+    C_Container.GetContainerNumSlots, C_Container.GetContainerItemInfo, C_Item.GetItemIconByID = slots, info, icon
+    T.check(ok, err)
+end)
+
+T.add("UI Enter selects suggestions and editing rejects unresolved names", function()
+    local store, frame = setup()
+    local form = frame.addForm
+    typeItem(form, "peace")
+    T.check(form.suggestions:IsShown())
+    form.item:GetScript("OnEnterPressed")(form.item)
+    T.eq(form.selectedItem, 2447)
+    typeItem(form, "unknown item")
+    T.eq(form.selectedItem, nil)
+    T.check(not form.itemIcon:IsShown())
+    T.check(not form.suggestions:IsShown())
+    form.qty:SetText("5")
+    click(form.add)
+    T.eq(#store:List(), 0)
+    T.eq(form.error:GetText(), "Pick an item from the list, or shift-click an item link.")
+    typeItem(form, "banana")
+    form.item:GetScript("OnEscapePressed")(form.item)
+    T.check(not form.suggestions:IsShown())
+    typeItem(form, "banana")
+    form.item:GetScript("OnEditFocusLost")(form.item)
+    T.check(form.suggestions:IsShown(), "suggestions stay up briefly so a click can land")
+end)
+
+T.add("UI shift-clicking a link selects its item and icon", function()
+    local store, frame = setup()
+    local form = frame.addForm
+    form.item:SetFocus()
+    local hasFocus = form.item.HasFocus
+    -- Wowless does not track edit-box focus, so the link hook needs a focused test box.
+    if _G.__wowless then form.item.HasFocus = function() return true end end
+    local ok, err = pcall(ChatEdit_InsertLink, link)
+    form.item.HasFocus = hasFocus
+    T.check(ok, err)
+    T.eq(form.selectedItem, 2447)
+    T.eq(form.item:GetText(), "Peacebloom")
+    T.check(form.itemIcon:IsShown())
+    form.qty:SetText("5")
+    click(form.add)
+    T.eq(store:List()[1].item, 2447)
+    T.eq(store:List()[1].name, "Peacebloom")
+end)
+
+T.add("Init slash add resolves names and reports unresolved items or guild errors", function()
+    local output = {}
+    local printMessage = ns.Print
+    ns.Print = function(format, ...) output[#output + 1] = format:format(...) end
+    local count = #ns.store:List()
+    local ok, err = pcall(function()
+        SlashCmdList.COMMUNITYWISHLIST("add 5 unknown item")
+        T.eq(#ns.store:List(), count)
+        T.eq(output[1], "Pick an item from the list, or shift-click an item link.")
+        SlashCmdList.COMMUNITYWISHLIST("add 5 Peacebloom")
+        if GetGuildInfo("player") then
+            T.eq(#ns.store:List(), count + 1)
+            local found = false
+            for _, wish in ipairs(ns.store:List()) do
+                if wish.item == 2447 and wish.name == "Peacebloom" and wish.qty == 5 then found = true end
+            end
+            T.check(found)
+        else
+            T.eq(#ns.store:List(), count)
+            T.check(output[2]:find("guild", 1, true))
+        end
+    end)
+    ns.Print = printMessage
+    T.check(ok, err)
+end)
+
 local function findRow(frame, wishId, claimId)
     for _, row in ipairs(frame.rows) do
         if row.wishId == wishId and row.claimId == claimId then

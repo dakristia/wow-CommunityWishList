@@ -4,11 +4,14 @@ This is the contract between the modules. `GLOSSARY.md` defines the words. `docs
 
 Target client: WoW: Forever (`## Interface: 16001`). Use `C_ChatInfo.SendChatMessage` and `C_Item.GetItemInfo`, because the old globals `SendChatMessage` and `GetItemInfo` do not exist there.
 
+ItemDB is a required addon dependency. It provides item names, links and search through `LibItemDB-1.0`.
+
 ## Files and load order
 
 | File | Owns |
 |------|------|
 | `Core.lua` | Namespace, `CommunityWishList` global, small helpers (`ns.FullName`, `ns.Print`) |
+| `Items.lua` | `ns.Items`: ItemDB search, exact-name and link resolution, icons, links and quality |
 | `Codec.lua` | `ns.Codec`: serialize and deserialize plain tables |
 | `Store.lua` | `ns.Store`: wishes, claims, merge, digest |
 | `Comm.lua` | `ns.Comm`: chunking, reassembly, throttled send queue |
@@ -18,7 +21,7 @@ Target client: WoW: Forever (`## Interface: 16001`). Use `C_ChatInfo.SendChatMes
 | `Minimap.lua` | The minimap button |
 | `Init.lua` | Wires everything to real WoW APIs, events and slash commands |
 
-Every file starts with `local _, ns = ...`. `Core.lua` sets the global `CommunityWishList = ns`, so tests and other addons reach the modules. No module except `Init.lua` touches events, `CommunityWishListDB` or real network APIs directly. Everything else gets its dependencies passed in, so tests can run two stores and a fake network in one Lua state.
+Every file starts with `local _, ns = ...`. `Core.lua` sets the global `CommunityWishList = ns`, so tests and other addons reach the modules. No module except `Init.lua` touches events, `CommunityWishListDB` or real network APIs directly. Store, sync and notification dependencies are passed in, so tests can run two stores and a fake network in one Lua state. `Items` uses ItemDB, `C_Container` and `C_Item` directly.
 
 Code style follows `src/TodoList/TodoList.lua`: 4-space indent, `local` functions, short comments only where the code needs a reason.
 
@@ -188,10 +191,10 @@ Rules:
 `CommunityWishListFrame`, a movable window that saves its position in `db.ui`. `/cwl` and `/wishlist` toggle it. `/cwl add <qty> <item link or name>` adds a guild wish from chat, and `/cwl help` lists the commands. It has four tabs:
 
 - **Wishes**: every open wish from others. A row shows the item icon and link, remaining and wanted quantity, wisher, note, gold, priority and a Claim button. Claim asks for a quantity and defaults to the remaining amount.
-- **My wishes**: my wishes with their claims (claimer, quantity, state, age), and Close, Delete, Release and Received buttons. An add form sits on top. Its item box accepts a shift-clicked link, an item dragged onto it, or a typed name.
+- **My wishes**: my wishes with their claims (claimer, quantity, state, age), and Close, Delete, Release and Received buttons. An add form sits on top. Typing at least two characters searches ItemDB and shows up to eight suggestions with icons and quality colours. Items in bags rank first, then names starting with the query, then other matches, alphabetically within each group. Clicking a suggestion or pressing Enter selects an item and shows its icon and tooltip. A shift-clicked link or dragged item also selects it. Editing clears the selection. Escape or losing focus hides suggestions. Add uses the selection or resolves an exact name or item link, and stores the real item name. An unresolved item shows "Pick an item from the list, or shift-click an item link." and adds nothing. `/cwl add` uses the same resolution and error.
 - **My claims**: my claims with Mark sent and Cancel buttons.
 - **Groups**: a placeholder that says groups come in a later version.
 
 The window uses native portrait chrome, top tabs and a textured inset. The search box filters Wishes, My wishes and My claims by item name, wisher short name or note, without case sensitivity. LibDBIcon owns the minimap launcher's position and visibility settings.
 
-The UI only talks to the store. It refreshes on every store change.
+The UI talks to the store and `Items`. It refreshes on every store change. `Items` looks up ItemDB lazily and returns empty results when the library is missing or not ready.

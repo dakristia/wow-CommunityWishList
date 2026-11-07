@@ -231,14 +231,11 @@ end
 local function addWish()
     local form = frame.addForm
     local text = strtrim(form.item:GetText())
-    local item = tonumber(text:match("|Hitem:(%d+)"))
-    local name, link
-    if text ~= "" then
-        if not item then item = C_Item.GetItemInfoInstant(text) end
-        name, link = C_Item.GetItemInfo(item or text)
-        if not item and link then item = tonumber(link:match("|Hitem:(%d+)")) end
+    local item, name = ns.Items.Resolve(form.selectedItem and ns.Items.Link(form.selectedItem) or text)
+    if not item then
+        form.error:SetText("Pick an item from the list, or shift-click an item link.")
+        return
     end
-    if not name or name == "" then name = text:match("|h%[(.-)%]|h") or text end
     local goldText = strtrim(form.gold:GetText())
     local gold = goldText == "" and 0 or tonumber(goldText)
     if not gold then
@@ -252,6 +249,9 @@ local function addWish()
     })
     form.error:SetText(wish and "" or reason)
     if wish then
+        form.selectedItem = nil
+        form.itemIcon:Hide()
+        form.suggestions:Hide()
         form.item:SetText("")
         form.qty:SetText("")
         form.note:SetText("")
@@ -266,7 +266,83 @@ local function createForm()
     local form = CreateFrame("Frame", nil, frame)
     form:SetPoint("TOPLEFT", 20, -96)
     form:SetSize(480, 130)
-    form.item = editBox(form, "Item", 0, -16, 300)
+    form.item = editBox(form, "Item", 36, -16, 264)
+    form.itemIcon = CreateFrame("Button", nil, form)
+    form.itemIcon:SetSize(28, 28)
+    form.itemIcon:SetPoint("RIGHT", form.item, "LEFT", -8, 0)
+    form.itemIcon.icon = form.itemIcon:CreateTexture(nil, "ARTWORK")
+    form.itemIcon.icon:SetAllPoints()
+    form.itemIcon:SetScript("OnEnter", function(self)
+        if form.selectedItem and GameTooltip and GameTooltip.SetItemByID then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetItemByID(form.selectedItem)
+            GameTooltip:Show()
+        end
+    end)
+    form.itemIcon:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    form.itemIcon:Hide()
+    local suggestions = CreateFrame("Frame", nil, form, "BackdropTemplate")
+    form.suggestions = suggestions
+    suggestions:SetPoint("TOPLEFT", form.item, "BOTTOMLEFT", 0, -2)
+    suggestions:SetWidth(360)
+    suggestions:SetFrameLevel(form:GetFrameLevel() + 10)
+    suggestions:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
+    suggestions:SetBackdropColor(0.08, 0.08, 0.08, 1)
+    suggestions:EnableMouse(true)
+    suggestions.rows = {}
+    local function selectItem(id)
+        local resolved, name = ns.Items.Resolve(ns.Items.Link(id))
+        if not resolved then return end
+        form.selectedItem = resolved
+        form.item:SetText(name)
+        form.itemIcon.icon:SetTexture(ns.Items.Icon(resolved) or questionMark)
+        form.itemIcon:Show()
+        suggestions:Hide()
+        form.error:SetText("")
+    end
+    for i = 1, 8 do
+        local row = CreateFrame("Button", nil, suggestions)
+        row:SetSize(360, 28)
+        row:SetPoint("TOPLEFT", 0, -(i - 1) * 28)
+        row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(24, 24)
+        row.icon:SetPoint("LEFT", 2, 0)
+        row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.name:SetPoint("LEFT", 30, 0)
+        row.name:SetPoint("RIGHT", -4, 0)
+        row.name:SetJustifyH("LEFT")
+        row:SetScript("OnClick", function(self) selectItem(self.itemID) end)
+        suggestions.rows[i] = row
+    end
+    suggestions:Hide()
+    form.item:SetScript("OnTextChanged", function(self, userInput)
+        if not userInput then return end
+        form.selectedItem = nil
+        form.itemIcon:Hide()
+        local results = ns.Items.Search(self:GetText())
+        for i, row in ipairs(suggestions.rows) do
+            local item = results[i]
+            row.itemID = item and item.id or nil
+            row:SetShown(item ~= nil)
+            if item then
+                row.icon:SetTexture(ns.Items.Icon(item.id) or questionMark)
+                row.name:SetText(item.name)
+                local color = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[item.quality]
+                row.name:SetTextColor(color and color.r or 1, color and color.g or 1, color and color.b or 1)
+            end
+        end
+        suggestions:SetHeight(math.max(1, #results * 28))
+        suggestions:SetShown(#results > 0)
+    end)
+    form.item:SetScript("OnEnterPressed", function(self)
+        if suggestions:IsShown() then selectItem(suggestions.rows[1].itemID) else self:ClearFocus() end
+    end)
+    form.item:SetScript("OnEscapePressed", function(self) suggestions:Hide(); self:ClearFocus() end)
+    -- The list hides a moment later, so a click on a suggestion lands before the list goes away.
+    form.item:SetScript("OnEditFocusLost", function()
+        C_Timer.After(0.2, function() if not form.item:HasFocus() then suggestions:Hide() end end)
+    end)
     form.qty = editBox(form, "Quantity", 316, -16, 66)
     form.note = editBox(form, "Note", 0, -58, 300)
     form.note:SetMaxLetters(120)
@@ -292,9 +368,9 @@ local function createForm()
     form.error:SetPoint("TOPLEFT", 0, -112)
     form.error:SetPoint("TOPRIGHT", 0, -112)
     local function receiveItem()
-        local kind, id, link = GetCursorInfo()
+        local kind, id = GetCursorInfo()
         if kind == "item" then
-            form.item:SetText(link or ("|Hitem:%d|h[Item %d]|h"):format(id, id))
+            selectItem(id)
             ClearCursor()
         end
     end
@@ -303,7 +379,8 @@ local function createForm()
     if ChatEdit_InsertLink then
         hooksecurefunc("ChatEdit_InsertLink", function(link)
             if form:IsVisible() and form.item:HasFocus() then
-                form.item:SetText(link)
+                local id = ns.Items.Resolve(link)
+                if id then selectItem(id) end
                 return
             end
         end)
