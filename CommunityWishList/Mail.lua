@@ -130,10 +130,25 @@ end
 
 -- The panel rebuilds its rows on every store change while it is shown, so a sent claim leaves the list at once.
 function Mail.CreatePanel(mail)
-    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", UIParent, "CollectionsBackgroundTemplate")
+    local function displayItem(wish)
+        if wish.item then return wish.item end
+        local name = strtrim(wish.name):lower()
+        local results = ns.Items.Search(strtrim(wish.name), 50)
+        if #results >= 50 then return nil end
+        local match
+        for _, item in ipairs(results) do
+            if item.name:lower() == name then
+                if match then return nil end
+                match = item.id
+            end
+        end
+        return match
+    end
+
+    local panel = CreateFrame("Frame", "CommunityWishListMailPanel", MailFrame or UIParent, "CollectionsBackgroundTemplate")
     panel:ClearAllPoints()
     panel:SetSize(300, 260)
-    if MailFrame then panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0) else panel:SetPoint("CENTER") end
+    if MailFrame then panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0) end
     panel:Hide()
 
     local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -194,7 +209,7 @@ function Mail.CreatePanel(mail)
             end
             header:ClearAllPoints()
             header:SetPoint("TOPLEFT", 12, y)
-            header:SetText(ns.ShortName(group.recipient))
+            header:SetText(group.recipient)
             header:Show()
             y = y - 16
             for _, entry in ipairs(group.claims) do
@@ -202,12 +217,16 @@ function Mail.CreatePanel(mail)
                 local r = row(n)
                 r:ClearAllPoints()
                 r:SetPoint("TOPLEFT", 12, y)
-                r.icon:SetTexture(ns.Items.Icon(entry.wish.item))
-                r.icon:SetShown(entry.wish.item ~= nil)
+                local item = displayItem(entry.wish)
+                r.icon:SetTexture(ns.Items.Icon(item) or "Interface\\Icons\\INV_Misc_Note_01")
+                r.icon:Show()
                 r.text:ClearAllPoints()
-                r.text:SetPoint("LEFT", entry.wish.item and 24 or 0, 0)
+                r.text:SetPoint("LEFT", r, "LEFT", 24, 0)
                 r.text:SetPoint("RIGHT", -78, 0)
-                r.text:SetText(("%d x %s"):format(entry.claim.qty, entry.wish.name or "?"))
+                local quality = ns.Items.Quality(item)
+                local color = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+                local name = ns.Items.Link(item) or (color and color.hex .. entry.wish.name .. "|r") or entry.wish.name
+                r.text:SetText(("%d x %s"):format(entry.claim.qty, name or "?"))
                 r.button:SetScript("OnClick", function() mail:Prepare(entry.wish.id, entry.claim.id) end)
                 r:Show()
                 y = y - 32
@@ -219,7 +238,18 @@ function Mail.CreatePanel(mail)
     mail.store:OnChange(function()
         if panel:IsShown() then panel.Refresh() end
     end)
-    panel:SetScript("OnShow", panel.Refresh)
+    panel:SetScript("OnShow", function()
+        if not MailFrame then
+            panel:Hide()
+            return
+        end
+        if panel:GetParent() ~= MailFrame then
+            panel:SetParent(MailFrame)
+            panel:ClearAllPoints()
+            panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0)
+        end
+        panel.Refresh()
+    end)
     mail.panel = panel
     return panel
 end
