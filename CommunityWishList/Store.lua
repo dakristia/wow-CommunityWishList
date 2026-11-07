@@ -256,16 +256,12 @@ function Store:Merge(remote)
     local localWish = self.db.wishes[incoming.id]
     if localWish and (localWish.owner ~= incoming.owner or (localWish.state == "deleted" and incoming.v <= localWish.v)) then return false end
     if incoming.state == "deleted" then
-        if localWish and (incoming.v <= localWish.v or localWish.owner == self.me) then return false end
+        if localWish and incoming.v <= localWish.v then return false end
         self.db.wishes[incoming.id] = incoming
         notify(self, "wish", incoming)
         return true
     end
     local changed, body = false, false
-    -- The wisher's own store never takes a body from others, so a forged higher v cannot rewrite it.
-    if localWish and localWish.owner == self.me then
-        incoming.v = localWish.v
-    end
     if not localWish or incoming.v > localWish.v then
         local claims = localWish and localWish.claims or {}
         incoming.claims, localWish = claims or {}, incoming
