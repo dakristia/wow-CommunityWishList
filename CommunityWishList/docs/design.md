@@ -36,7 +36,7 @@ CommunityWishListDB = {
     wishes = { [wishId] = wish },  -- the cache, including tombstones
     seq = { ["Name-Realm"] = n },  -- last used wish/claim number per character
     seen = { [claimId] = true },   -- claims the wisher has already been alerted about
-    ui = { point = "CENTER", x = 0, y = 0, tab = "wanted", minimap = { angle = 200 } },
+    ui = { point = "CENTER", x = 0, y = 0, tab = "wishes", minimap = { minimapPos = 200 } },
 }
 ```
 
@@ -187,9 +187,11 @@ Rules:
 
 `CommunityWishListFrame`, a movable window that saves its position in `db.ui`. `/cwl` and `/wishlist` toggle it. `/cwl add <qty> <item link or name>` adds a guild wish from chat, and `/cwl help` lists the commands. It has four tabs:
 
-- **Wanted**: every open wish from others. A row shows the item icon and link, remaining and wanted quantity, wisher, note, gold, priority and a Claim button. Claim asks for a quantity and defaults to the remaining amount.
+- **Wishes**: every open wish from others. A row shows the item icon and link, remaining and wanted quantity, wisher, note, gold, priority and a Claim button. Claim asks for a quantity and defaults to the remaining amount.
 - **My wishes**: my wishes with their claims (claimer, quantity, state, age), and Close, Delete, Release and Received buttons. An add form sits on top. Its item box accepts a shift-clicked link, an item dragged onto it, or a typed name.
 - **My claims**: my claims with Mark sent and Cancel buttons.
 - **Groups**: a placeholder that says groups come in a later version.
+
+The window uses native portrait chrome, top tabs and a textured inset. The search box filters Wishes, My wishes and My claims by item name, wisher short name or note, without case sensitivity. LibDBIcon owns the minimap launcher's position and visibility settings.
 
 The UI only talks to the store. It refreshes on every store change.

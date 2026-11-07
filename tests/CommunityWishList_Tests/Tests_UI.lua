@@ -6,6 +6,12 @@ local function click(button)
     button:GetScript("OnClick")(button, "LeftButton")
 end
 
+local function search(frame, text)
+    frame.search:SetText(text)
+    -- Wowless SetText only stores text, so tests dispatch the client script explicitly.
+    if _G.__wowless then frame.search:GetScript("OnTextChanged")(frame.search, true) end
+end
+
 local function setup(tab)
     local store = T.newStore("Ann-Realm", "Guild")
     local db = { ui = {} }
@@ -32,19 +38,19 @@ local function bobWish(store, qty)
 end
 
 T.add("UI Toggle and tab buttons save the selected tab", function()
-    local _, frame, db = setup("wanted")
+    local _, frame, db = setup("wishes")
     ns.UI.Toggle()
     T.check(not frame:IsShown())
     ns.UI.Toggle()
     T.check(frame:IsShown())
-    for _, tab in ipairs({ "mine", "claims", "groups", "wanted" }) do
+    for _, tab in ipairs({ "mine", "claims", "groups", "wishes" }) do
         click(frame.tabs[tab])
         T.eq(db.ui.tab, tab)
         T.eq(frame.addForm:IsShown(), tab == "mine")
     end
     T.eq(frame.title:GetText(), "Community Wish List")
     T.eq(db.ui.point, "CENTER")
-    T.eq(db.ui.minimap.angle, 200)
+    T.eq(frame.tabs.wishes:GetText(), "Wishes")
 end)
 
 T.add("UI Add creates a quantity 20 wish and a visible row", function()
@@ -90,11 +96,11 @@ T.add("UI Add parses a shift-click style item link", function()
     T.eq(store:List()[1].item, 2447)
 end)
 
-T.add("UI Wanted claims five and refreshes remaining, then marks sent", function()
-    local store, frame = setup("wanted")
+T.add("UI Wishes claims five and refreshes remaining, then marks sent", function()
+    local store, frame = setup("wishes")
     local wish = bobWish(store)
     local own = assert(store:AddWish({ name = "My herb", qty = 3, guild = true }))
-    T.eq(#frame.rows, 1, "Wanted excludes my wishes")
+    T.eq(#frame.rows, 1, "Wishes excludes my wishes")
     T.check(frame.rows[1].wishId ~= own.id)
     local row = findRow(frame, wish.id)
     T.check(row.buttons.claim)
@@ -126,7 +132,7 @@ T.add("UI Wanted claims five and refreshes remaining, then marks sent", function
 end)
 
 T.add("UI claim Cancel and popup Cancel leave the expected state", function()
-    local store, frame = setup("wanted")
+    local store, frame = setup("wishes")
     local wish = bobWish(store)
     click(findRow(frame, wish.id).buttons.claim)
     click(frame.claimPopup.cancel)
@@ -161,8 +167,8 @@ T.add("UI My wishes releases and receives claims, closes and deletes wishes", fu
     T.eq(#frame.rows, 0)
 end)
 
-T.add("UI Wanted puts wishes with remaining quantity before fully claimed wishes", function()
-    local store, frame = setup("wanted")
+T.add("UI Wishes puts wishes with remaining quantity before fully claimed wishes", function()
+    local store, frame = setup("wishes")
     local bob = T.newStore("Bob-Realm", "Guild")
     local filled = assert(bob:AddWish({ name = "Filled", qty = 2, guild = true }))
     local open = assert(bob:AddWish({ name = "Available", qty = 4, guild = true }))
@@ -179,12 +185,85 @@ T.add("UI Groups shows the placeholder and hides list rows", function()
     T.eq(frame.groups:GetText(), "Groups come in a later version.")
     T.eq(#frame.rows, 0)
     T.check(not frame.scrollFrame:IsShown())
+    T.check(not frame.search:IsShown())
+end)
+
+T.add("UI migrates the saved wanted tab to wishes", function()
+    local store = T.newStore("Ann-Realm", "Guild")
+    local db = { ui = { tab = "wanted" } }
+    ns.UI.Attach(store, db)
+    ns.UI.Show()
+    T.eq(db.ui.tab, "wishes")
+    T.eq(CommunityWishListFrame.selectedTab, 1)
+    T.eq(CommunityWishListFrame:GetTitleText():GetText(), "Community Wish List")
+end)
+
+T.add("UI search filters Wishes by item name, wisher and note as text changes", function()
+    local store, frame = setup("wishes")
+    local wish, bob = bobWish(store)
+    local other = assert(bob:AddWish({ name = "Silverleaf", qty = 10, note = "For Alchemy", guild = true }))
+    store:Merge(other)
+    T.check(frame.search:IsShown())
+    search(frame, "PEACE")
+    T.eq(#frame.rows, 1)
+    T.eq(frame.rows[1].wishId, wish.id)
+    search(frame, "bOb")
+    T.eq(#frame.rows, 2)
+    search(frame, "alchemy")
+    T.eq(#frame.rows, 1)
+    T.eq(frame.rows[1].wishId, other.id)
+    search(frame, "no match")
+    T.eq(#frame.rows, 0)
+    search(frame, "")
+    T.eq(#frame.rows, 2)
+end)
+
+T.add("UI search filters My wishes and My claims with their claim rows", function()
+    local store, frame = setup("mine")
+    local own = assert(store:AddWish({ name = "My herb", qty = 3, guild = true }))
+    local wish = bobWish(store)
+    local claim = assert(store:Claim(wish.id, 2))
+    search(frame, "my herb")
+    T.eq(#frame.rows, 1)
+    T.eq(frame.rows[1].wishId, own.id)
+    click(frame.tabs.claims)
+    T.check(frame.search:IsShown())
+    T.eq(#frame.rows, 0)
+    search(frame, "peace")
+    T.eq(#frame.rows, 2)
+    T.eq(findRow(frame, wish.id, claim.id).claimId, claim.id)
+end)
+
+T.add("UI wish rows have item buttons with item icons and a text-only fallback", function()
+    local store, frame = setup("mine")
+    local getIcon = C_Item.GetItemIconByID
+    local icon = getIcon(2447)
+    if _G.__wowless and not icon then
+        icon = 134400
+        C_Item.GetItemIconByID = function(id)
+            T.eq(id, 2447)
+            return icon
+        end
+    end
+    local ok, wish = pcall(store.AddWish, store, { item = 2447, name = "Peacebloom", qty = 2, prio = 1, guild = true })
+    C_Item.GetItemIconByID = getIcon
+    T.check(ok, wish)
+    T.check(wish)
+    local row = findRow(frame, wish.id)
+    T.eq(row.itemButton:GetObjectType(), "Button")
+    T.eq(row.itemButton:GetWidth(), 32)
+    T.eq(row.itemButton:GetHeight(), 32)
+    T.eq(row.itemButton.icon:GetTexture(), icon)
+    T.check(row.itemButton.icon:GetTexture() ~= nil)
+    T.check(row.label:GetText():find("Low", 1, true))
+    local textWish = assert(store:AddWish({ name = "Unknown herb", qty = 1, guild = true }))
+    T.eq(findRow(frame, textWish.id).itemButton.icon:GetTexture(), "Interface\\Icons\\INV_Misc_QuestionMark")
 end)
 
 T.add("minimap button attaches once and toggles the UI", function()
     local _, frame, db = setup("groups")
     ns.Minimap.Attach(db)
-    local minimap = CommunityWishListMinimapButton
+    local minimap = LibDBIcon10_CommunityWishList
     T.eq(minimap:GetWidth(), 31)
     T.eq(minimap:GetHeight(), 31)
     T.eq(minimap:GetParent(), Minimap)
@@ -193,5 +272,23 @@ T.add("minimap button attaches once and toggles the UI", function()
     click(minimap)
     T.check(frame:IsShown())
     ns.Minimap.Attach(db)
-    T.eq(CommunityWishListMinimapButton, minimap)
+    T.eq(LibDBIcon10_CommunityWishList, minimap)
+    T.eq(db.ui.minimap.minimapPos, 200)
+    click(minimap)
+    minimap:GetScript("OnClick")(minimap, "RightButton")
+    T.check(not frame:IsShown())
+end)
+
+T.add("minimap migrates angle once and refreshes saved visibility", function()
+    local db = { ui = { minimap = { angle = 123, hide = true } } }
+    ns.Minimap.Attach(db)
+    T.eq(db.ui.minimap.minimapPos, 123)
+    T.eq(db.ui.minimap.angle, nil)
+    T.check(not LibDBIcon10_CommunityWishList:IsShown())
+    db.ui.minimap.angle = 50
+    db.ui.minimap.hide = false
+    ns.Minimap.Attach(db)
+    T.eq(db.ui.minimap.minimapPos, 123)
+    T.eq(db.ui.minimap.angle, nil)
+    T.check(LibDBIcon10_CommunityWishList:IsShown())
 end)
