@@ -9,6 +9,24 @@ local tabs = { "wishes", "mine", "claims", "groups" }
 local tabNames = { wishes = "Wishes", mine = "My wishes", claims = "My claims", groups = "Groups" }
 local priorities = { "Low", "Normal", "Urgent" }
 local questionMark = "Interface\\Icons\\INV_Misc_QuestionMark"
+local parchment = "Interface\\AchievementFrame\\UI-Achievement-Parchment-Horizontal"
+local stateColors = { open = "ffffffff", sent = "ff66dd88", received = "ff77bbff" }
+local emptyText = {
+    wishes = "No wishes from your guild yet.",
+    mine = "You have no wishes. Add one above.",
+    claims = "You have not claimed anything.",
+}
+
+local function section(parent)
+    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    panel:SetBackdrop({
+        bgFile = parchment, edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 12, insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    panel:SetBackdropColor(0.24, 0.17, 0.10, 1)
+    panel:SetBackdropBorderColor(0.65, 0.48, 0.23, 1)
+    return panel
+end
 
 local function button(parent, text, width)
     local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
@@ -39,8 +57,17 @@ end
 
 local function money(copper)
     copper = copper or 0
+    if copper <= 0 then return "" end
     if GetCoinTextureString then return GetCoinTextureString(copper) end
-    return ("%dg %ds %dc"):format(math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100)
+    local coins = {}
+    for _, coin in ipairs({ { 10000, "Gold" }, { 100, "Silver" }, { 1, "Copper" } }) do
+        local amount = math.floor(copper / coin[1])
+        if amount > 0 then
+            coins[#coins + 1] = amount .. "|TInterface\\MoneyFrame\\UI-" .. coin[2] .. "Icon:0|t"
+        end
+        copper = copper % coin[1]
+    end
+    return table.concat(coins, " ")
 end
 
 local function itemText(wish)
@@ -83,11 +110,13 @@ local function rowFor(wish, claim)
     local row = pool[index]
     if not row then
         row = CreateFrame("Frame", nil, frame.scrollChild)
-        row:SetHeight(66)
         row:EnableMouse(true)
+        row.background = row:CreateTexture(nil, "BACKGROUND")
+        row.background:SetAllPoints()
+        row.background:SetColorTexture(0.55, 0.36, 0.14, 0.16)
         row.itemButton = CreateFrame("Button", nil, row)
         row.itemButton:SetSize(32, 32)
-        row.itemButton:SetPoint("TOPLEFT", 0, -4)
+        row.itemButton:SetPoint("TOPLEFT", 8, -8)
         row.icon = row.itemButton:CreateTexture(nil, "ARTWORK")
         row.icon:SetAllPoints()
         row.itemButton.icon = row.icon
@@ -96,11 +125,17 @@ local function rowFor(wish, claim)
         row.itemButton.border:SetBlendMode("ADD")
         row.itemButton.border:SetSize(56, 56)
         row.itemButton.border:SetPoint("CENTER")
-        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        row.label:SetPoint("TOPLEFT", 40, -4)
-        row.label:SetPoint("TOPRIGHT", -4, -4)
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         row.label:SetJustifyH("LEFT")
-        row.label:SetWordWrap(true)
+        row.label:SetWordWrap(false)
+        row.detail = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.detail:SetJustifyH("LEFT")
+        row.detail:SetWordWrap(false)
+        row.detail:SetTextColor(0.72, 0.72, 0.72)
+        row.priority = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.priority:SetPoint("TOPRIGHT", -8, -5)
+        row.gold = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.gold:SetPoint("TOPRIGHT", -8, -19)
         row.buttonPool = {}
         row.itemButton:SetScript("OnEnter", function(self)
             local current = store:Get(row.wishId)
@@ -124,8 +159,28 @@ local function rowFor(wish, claim)
     row.buttons = {}
     row.wishId, row.claimId = wish.id, claim and claim.id or nil
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", frame.scrollChild, "TOPLEFT", claim and 18 or 0, -(index - 1) * 66)
-    row:SetPoint("TOPRIGHT", frame.scrollChild, "TOPRIGHT", 0, -(index - 1) * 66)
+    row:SetHeight(claim and 24 or 48)
+    row:SetPoint("TOPLEFT", frame.scrollChild, "TOPLEFT", claim and 44 or 0, -frame.rowHeight)
+    row:SetPoint("TOPRIGHT", frame.scrollChild, "TOPRIGHT", 0, -frame.rowHeight)
+    frame.rowHeight = frame.rowHeight + row:GetHeight() + (claim and 0 or 4)
+    row.actionWidth = 0
+    row.metaWidth = not claim and ((wish.gold or 0) > 0 and 100 or wish.prio ~= 2 and 48 or 0) or 0
+    row.label:ClearAllPoints()
+    row.label:SetFontObject(claim and GameFontNormalSmall or GameFontHighlight)
+    row.label:SetTextColor(claim and 0.72 or 1, claim and 0.72 or 1, claim and 0.72 or 1)
+    row.label:SetPoint("TOPLEFT", claim and 8 or 48, claim and -6 or -7)
+    row.label:SetPoint("TOPRIGHT", -row.metaWidth - 8, claim and -6 or -7)
+    row.detail:ClearAllPoints()
+    row.detail:SetPoint("TOPLEFT", 48, -27)
+    row.detail:SetPoint("TOPRIGHT", (wish.gold or 0) > 0 and -108 or -8, -27)
+    row.detail:SetShown(not claim)
+    row.priority:ClearAllPoints()
+    row.priority:SetPoint("TOPRIGHT", row, "TOPRIGHT", -12, -5)
+    row.gold:ClearAllPoints()
+    row.gold:SetPoint("TOPRIGHT", row, "TOPRIGHT", -12, -21)
+    row.priority:SetShown(not claim)
+    row.gold:SetShown(not claim)
+    row.background:SetAlpha(claim and 0.35 or (index % 2 == 0 and 0.65 or 1))
     local icon = wish.item and C_Item.GetItemIconByID(wish.item) or nil
     if not wish.item then icon = questionMark end
     row.icon:SetTexture(icon)
@@ -145,10 +200,16 @@ local function action(row, key, text, fn)
         b = button(row, text, text == "Mark sent" and 82 or 68)
         row.buttonPool[key] = b
     end
-    local count = 0
-    for _ in pairs(row.buttons) do count = count + 1 end
     b:ClearAllPoints()
-    b:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", -count * 88, 2)
+    b:SetPoint("RIGHT", row, "RIGHT", -row.actionWidth - 6, 0)
+    row.actionWidth = row.actionWidth + b:GetWidth() + 4
+    row.label:SetPoint("TOPRIGHT", -row.actionWidth - row.metaWidth - 8, row.claimId and -6 or -7)
+    local wish = store:Get(row.wishId)
+    row.detail:SetPoint("TOPRIGHT", -row.actionWidth - ((wish.gold or 0) > 0 and 108 or 8), -27)
+    row.priority:ClearAllPoints()
+    row.priority:SetPoint("TOPRIGHT", row, "TOPRIGHT", -row.actionWidth - 12, -5)
+    row.gold:ClearAllPoints()
+    row.gold:SetPoint("TOPRIGHT", row, "TOPRIGHT", -row.actionWidth - 12, -21)
     b:SetScript("OnClick", function()
         local result, reason = fn()
         frame.error:SetText(result and "" or reason or "")
@@ -159,9 +220,12 @@ end
 
 local function wishRow(wish)
     local row = rowFor(wish)
-    row.label:SetText((wish.prio == 3 and "|cffff5555Urgent|r " or wish.prio == 1 and "Low " or "") .. itemText(wish)
-        .. "  " .. store:Remaining(wish) .. " / " .. wish.qty .. "  " .. ns.ShortName(wish.owner)
-        .. "  " .. money(wish.gold) .. "\n" .. (wish.note or ""))
+    row.label:SetText(itemText(wish))
+    row.detail:SetText(store:Remaining(wish) .. " of " .. wish.qty .. " wanted · " .. ns.ShortName(wish.owner)
+        .. (wish.note and wish.note ~= "" and " · " .. wish.note or ""))
+    row.priority:SetText(wish.prio == 3 and "|cffff7777Urgent|r" or wish.prio == 1 and "|cffaaaaaaLow|r" or "")
+    row.gold:SetText(money(wish.gold))
+    row.gold:SetShown((wish.gold or 0) > 0)
     return row
 end
 
@@ -177,6 +241,7 @@ end
 refresh = function()
     for _, row in ipairs(pool) do row:Hide() end
     frame.rows = {}
+    frame.rowHeight = 0
     local tab = settings.tab
     PanelTemplates_SetTab(frame, frame.tabs[tab]:GetID())
     frame.addForm:SetShown(tab == "mine")
@@ -184,8 +249,8 @@ refresh = function()
     frame.scrollFrame:SetShown(tab ~= "groups")
     frame.search:SetShown(tab ~= "groups")
     frame.scrollFrame:ClearAllPoints()
-    frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, tab == "mine" and -232 or -100)
-    frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -30, 66)
+    frame.scrollFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 16, tab == "mine" and -252 or -100)
+    frame.scrollFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -30, 44)
     if tab == "wishes" then
         local wishes = store:List({ state = "open" })
         -- Wishes uses two passes so each remaining-quantity group keeps the store's order.
@@ -211,7 +276,8 @@ refresh = function()
                 for _, claim in ipairs(sortedClaims(wish)) do
                     if tab == "mine" or claim.by == store.me then
                         local claimRow = rowFor(wish, claim)
-                        claimRow.label:SetText(ns.ShortName(claim.by) .. "  " .. claim.qty .. "  " .. claim.state .. "  " .. age(claim.created))
+                        claimRow.label:SetText(ns.ShortName(claim.by) .. " · " .. claim.qty .. " · |c"
+                            .. (stateColors[claim.state] or "ff999999") .. claim.state .. "|r · " .. age(claim.created))
                         if tab == "mine" and claim.state == "open" then
                             action(claimRow, "release", "Release", function() return store:ReleaseClaim(wish.id, claim.id) end)
                         elseif tab == "mine" and claim.state == "sent" then
@@ -225,7 +291,18 @@ refresh = function()
             end
         end
     end
-    frame.scrollChild:SetHeight(math.max(1, #frame.rows * 66))
+    frame.scrollChild:SetHeight(math.max(1, frame.rowHeight))
+    frame.empty:SetText(emptyText[tab] or "")
+    frame.empty:SetShown(tab ~= "groups" and #frame.rows == 0)
+    local open, claimed = 0, 0
+    for _, wish in ipairs(store:List()) do
+        if wish.state == "open" then open = open + 1 end
+        for _, claim in pairs(wish.claims) do
+            if claim.by == store.me and (claim.state == "open" or claim.state == "sent") then claimed = claimed + 1 end
+        end
+    end
+    frame.status:SetText(open .. (open == 1 and " open wish" or " open wishes") .. " · "
+        .. claimed .. (claimed == 1 and " claim by you" or " claims by you"))
 end
 
 local function addWish()
@@ -263,10 +340,11 @@ local function addWish()
 end
 
 local function createForm()
-    local form = CreateFrame("Frame", nil, frame)
-    form:SetPoint("TOPLEFT", 20, -96)
-    form:SetSize(480, 130)
-    form.item = editBox(form, "Item", 36, -16, 264)
+    local form = section(frame)
+    form:SetPoint("TOPLEFT", 16, -96)
+    form:SetPoint("TOPRIGHT", -16, -96)
+    form:SetHeight(146)
+    form.item = editBox(form, "Item", 48, -26, 300)
     form.itemIcon = CreateFrame("Button", nil, form)
     form.itemIcon:SetSize(28, 28)
     form.itemIcon:SetPoint("RIGHT", form.item, "LEFT", -8, 0)
@@ -287,7 +365,7 @@ local function createForm()
     suggestions:SetWidth(360)
     suggestions:SetFrameLevel(form:GetFrameLevel() + 10)
     suggestions:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8X8" })
-    suggestions:SetBackdropColor(0.08, 0.08, 0.08, 1)
+    suggestions:SetBackdropColor(0.16, 0.11, 0.06, 1)
     suggestions:EnableMouse(true)
     suggestions.rows = {}
     local function selectItem(id)
@@ -343,12 +421,12 @@ local function createForm()
     form.item:SetScript("OnEditFocusLost", function()
         C_Timer.After(0.2, function() if not form.item:HasFocus() then suggestions:Hide() end end)
     end)
-    form.qty = editBox(form, "Quantity", 316, -16, 66)
-    form.note = editBox(form, "Note", 0, -58, 300)
+    form.qty = editBox(form, "Quantity", 370, -26, 138)
+    form.note = editBox(form, "Note", 16, -68, 332)
     form.note:SetMaxLetters(120)
-    form.gold = editBox(form, "Gold", 316, -58, 66)
+    form.gold = editBox(form, "Gold", 370, -68, 138)
     form.prio = button(form, "Normal", 72)
-    form.prio:SetPoint("TOPLEFT", 0, -86)
+    form.prio:SetPoint("TOPLEFT", 16, -98)
     form.prio.value = 2
     form.prio:SetScript("OnClick", function(self)
         self.value = self.value % 3 + 1
@@ -362,11 +440,11 @@ local function createForm()
     label:SetPoint("LEFT", form.guild, "RIGHT", 0, 0)
     label:SetText("Guild")
     form.add = button(form, "Add")
-    form.add:SetPoint("TOPRIGHT", -8, -86)
+    form.add:SetPoint("TOPRIGHT", -16, -98)
     form.add:SetScript("OnClick", addWish)
     form.error = errorText(form)
-    form.error:SetPoint("TOPLEFT", 0, -112)
-    form.error:SetPoint("TOPRIGHT", 0, -112)
+    form.error:SetPoint("TOPLEFT", 16, -126)
+    form.error:SetPoint("TOPRIGHT", -16, -126)
     local function receiveItem()
         local kind, id = GetCursorInfo()
         if kind == "item" then
@@ -399,9 +477,12 @@ local function createFrame()
     frame:SetPortraitToAsset("Interface\\Icons\\INV_Misc_Note_01")
     frame:SetTitle("Community Wish List")
     frame.title = frame:GetTitleText()
-    frame.Inset = CreateFrame("Frame", nil, frame, "InsetFrameTemplate")
+    frame.Bg:SetTexture(parchment)
+    frame.Bg:SetVertexColor(0.30, 0.21, 0.12)
+    frame.Inset = section(frame)
+    frame.Inset:SetFrameLevel(frame:GetFrameLevel())
     frame.Inset:SetPoint("TOPLEFT", 4, -90)
-    frame.Inset:SetPoint("BOTTOMRIGHT", -6, 60)
+    frame.Inset:SetPoint("BOTTOMRIGHT", -6, 38)
     local titleBar = frame.TitleContainer
     titleBar:EnableMouse(true)
     titleBar:RegisterForDrag("LeftButton")
@@ -438,23 +519,30 @@ local function createFrame()
     frame.scrollChild:SetSize(514, 1)
     frame.scrollFrame:SetScrollChild(frame.scrollChild)
     frame.rows = {}
+    frame.empty = frame.scrollFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    frame.empty:SetPoint("TOP", 0, -24)
     frame.groups = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     frame.groups:SetPoint("CENTER")
     frame.groups:SetText("Groups come in a later version.")
     frame.error = errorText(frame)
     frame.error:SetPoint("BOTTOMLEFT", 16, 10)
+    frame.status = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    frame.status:SetPoint("BOTTOMLEFT", 16, 26)
+    frame.status:SetTextColor(0.8, 0.72, 0.55)
     createForm()
-    local popup = CreateFrame("Frame", nil, frame)
-    popup:SetPoint("BOTTOMLEFT", 16, 12)
-    popup:SetSize(480, 48)
-    popup.qty = editBox(popup, "Claim quantity", 0, -14, 100)
+    local popup = section(frame)
+    popup:SetFrameLevel(frame:GetFrameLevel() + 20)
+    popup:EnableMouse(true)
+    popup:SetPoint("CENTER")
+    popup:SetSize(300, 82)
+    popup.qty = editBox(popup, "Claim quantity", 16, -28, 100)
     popup.ok = button(popup, "OK", 60)
     popup.ok:SetPoint("LEFT", popup.qty, "RIGHT", 8, 0)
     popup.cancel = button(popup, "Cancel")
     popup.cancel:SetPoint("LEFT", popup.ok, "RIGHT", 8, 0)
     popup.error = errorText(popup)
-    popup.error:SetPoint("TOPLEFT", 0, -38)
-    popup.error:SetPoint("TOPRIGHT", 0, -38)
+    popup.error:SetPoint("TOPLEFT", 16, -58)
+    popup.error:SetPoint("TOPRIGHT", -16, -58)
     popup.ok:SetScript("OnClick", function()
         local claim, reason = store:Claim(popup.wishId, tonumber(popup.qty:GetText()))
         popup.error:SetText(claim and "" or reason)
