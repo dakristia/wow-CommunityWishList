@@ -203,7 +203,7 @@ function Mail.CreatePanel(mail)
             end
             header:ClearAllPoints()
             header:SetPoint("TOPLEFT", 12, y)
-            header:SetText(group.recipient)
+            header:SetText(ns.ShortName(group.recipient))
             header:Show()
             y = y - 16
             for _, entry in ipairs(group.claims) do

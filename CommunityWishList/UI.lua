@@ -120,7 +120,7 @@ end
 local function matchesSearch(wish)
     local query = strtrim(frame.search:GetText()):lower()
     return query == "" or wish.name:lower():find(query, 1, true)
-        or wish.owner:lower():find(query, 1, true)
+        or ns.ShortName(wish.owner):lower():find(query, 1, true)
         or (wish.note or ""):lower():find(query, 1, true)
 end
 
@@ -253,7 +253,7 @@ end
 local function wishRow(wish)
     local row = rowFor(wish)
     row.label:SetText(itemText(wish, row.displayItem))
-    row.detail:SetText(store:Remaining(wish) .. " of " .. wish.qty .. " wanted · " .. wish.owner
+    row.detail:SetText(store:Remaining(wish) .. " of " .. wish.qty .. " wanted · " .. ns.ShortName(wish.owner)
         .. (wish.note and wish.note ~= "" and " · " .. wish.note or ""))
     row.priority:SetText(wish.prio == 3 and "|cffff7777Urgent|r" or wish.prio == 1 and "|cffaaaaaaLow|r" or "")
     row.gold:SetText(money(wish.gold))
@@ -308,7 +308,7 @@ refresh = function()
                 for _, claim in ipairs(sortedClaims(wish)) do
                     if tab == "mine" or claim.by == store.me then
                         local claimRow = rowFor(wish, claim)
-                        claimRow.label:SetText(claim.by .. " · " .. claim.qty .. " · |c"
+                        claimRow.label:SetText(ns.ShortName(claim.by) .. " · " .. claim.qty .. " · |c"
                             .. (stateColors[claim.state] or "ff999999") .. claim.state .. "|r · " .. age(claim.created))
                         if tab == "mine" and claim.state == "open" then
                             action(claimRow, "release", "Release", function() return store:ReleaseClaim(wish.id, claim.id) end)

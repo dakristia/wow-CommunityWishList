@@ -68,6 +68,28 @@ local function setupStore()
         isOnline = isOnline, whisper = whisper, alert = alert, after = C_Timer.After }
 end
 
+-- Records written before surnames were handled name this character "Crayons-Realm" instead of
+-- "Crayons Bonk-Realm". Only this account's own names are rewritten, never another player's.
+local function migrateOwnRecords(db)
+    if not me then return end
+    local function mine(name)
+        return type(name) == "string" and name ~= me and ns.IsMyStoredName(name)
+    end
+    for _, wish in pairs(db.wishes) do
+        if mine(wish.owner) then wish.owner = me end
+        if mine(wish.recipient) then wish.recipient = me end
+        for _, claim in pairs(wish.claims or {}) do
+            if mine(claim.by) then claim.by = me end
+        end
+    end
+    for name, count in pairs(db.seq) do
+        if mine(name) then
+            db.seq[me] = math.max(db.seq[me] or 0, count)
+            db.seq[name] = nil
+        end
+    end
+end
+
 local function mailApi()
     return {
         setRecipient = function(name) SendMailNameEditBox:SetText(name) end,
@@ -185,8 +207,9 @@ frame:SetScript("OnEvent", function(_, event, ...)
         CommunityWishListDB = CommunityWishListDB or {}
     elseif event == "PLAYER_LOGIN" then
         -- The store starts here and not at ADDON_LOADED, because the realm name can still be nil there.
-        me = ns.FullName(UnitName("player"))
+        me = ns.Me()
         setupStore()
+        migrateOwnRecords(CommunityWishListDB)
         setupMail()
         ns.UI.Attach(ns.store, CommunityWishListDB)
         ns.Minimap.Attach(CommunityWishListDB)
