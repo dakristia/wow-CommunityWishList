@@ -99,6 +99,8 @@ function Comm:Receive(prefix, text, channel, sender)
         messages[mid] = message
     end
     if message.parts[i] then return end
+    -- The 30 second limit counts from the latest part, because a 64-part message takes about a minute at 1 part per second.
+    message.started = now
     message.parts[i] = chunk
     message.count = message.count + 1
     if message.count == n then
