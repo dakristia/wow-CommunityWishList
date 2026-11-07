@@ -121,7 +121,8 @@ end
 function Store:DeleteWish(id)
     local wish, err = owned(self, id)
     if not wish then return nil, err end
-    wish = { id = wish.id, owner = wish.owner, state = "deleted", v = wish.v + 1, modified = self.now() }
+    -- The tombstone keeps its audience, because Sync only passes a wish on to members of its audience.
+    wish = { id = wish.id, owner = wish.owner, audience = wish.audience, state = "deleted", v = wish.v + 1, modified = self.now() }
     self.db.wishes[id] = wish
     notify(self, "wish", wish)
     return wish
@@ -222,14 +223,6 @@ end
 local function cleanWish(remote)
     if type(remote) ~= "table" or type(remote.id) ~= "string" or remote.id == "" or not fullname(remote.owner) or not integer(remote.v, 1) or (remote.state ~= "open" and remote.state ~= "closed" and remote.state ~= "deleted") or type(remote.modified) ~= "number" then return nil end
     local wish = { id = remote.id, owner = fullname(remote.owner), v = remote.v, state = remote.state, modified = remote.modified }
-    if wish.state == "deleted" then return wish end
-    if type(remote.name) ~= "string" or remote.name == "" or not integer(remote.qty, 1) or type(remote.created) ~= "number" then return nil end
-    wish.name, wish.qty, wish.created = remote.name, remote.qty, remote.created
-    wish.recipient = fullname(remote.recipient) or wish.owner
-    wish.item = integer(remote.item, 1) and remote.item or nil
-    wish.note = type(remote.note) == "string" and remote.note:gsub("[%z\1-\31]", ""):sub(1, 120) or nil
-    wish.gold = integer(remote.gold, 0) and remote.gold or 0
-    wish.prio = integer(remote.prio, 1) and remote.prio <= 3 and remote.prio or 2
     wish.audience = { groups = {} }
     if type(remote.audience) == "table" then
         if type(remote.audience.guild) == "string" then wish.audience.guild = remote.audience.guild end
@@ -239,6 +232,14 @@ local function cleanWish(remote)
             end
         end
     end
+    if wish.state == "deleted" then return wish end
+    if type(remote.name) ~= "string" or remote.name == "" or not integer(remote.qty, 1) or type(remote.created) ~= "number" then return nil end
+    wish.name, wish.qty, wish.created = remote.name, remote.qty, remote.created
+    wish.recipient = fullname(remote.recipient) or wish.owner
+    wish.item = integer(remote.item, 1) and remote.item or nil
+    wish.note = type(remote.note) == "string" and remote.note:gsub("[%z\1-\31]", ""):sub(1, 120) or nil
+    wish.gold = integer(remote.gold, 0) and remote.gold or 0
+    wish.prio = integer(remote.prio, 1) and remote.prio <= 3 and remote.prio or 2
     wish.claims = {}
     if type(remote.claims) == "table" then
         for id, claim in pairs(remote.claims) do
