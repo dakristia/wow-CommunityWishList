@@ -24,6 +24,22 @@ function ns.ShortName(fullName)
     return (fullName and fullName:match("^[^-]+")) or fullName
 end
 
+-- The stock panel button is red, so its art is desaturated and tinted bronze to match the window trim.
+function ns.Button(parent, text, width)
+    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    b:SetSize(width or 70, 22)
+    b:SetNormalFontObject(GameFontNormalSmall)
+    b:SetHighlightFontObject(GameFontHighlightSmall)
+    b:SetDisabledFontObject(GameFontDisableSmall)
+    local art = { b.Left, b.Middle, b.Right, b:GetNormalTexture(), b:GetPushedTexture(), b:GetDisabledTexture() }
+    for _, texture in pairs(art) do
+        texture:SetDesaturated(true)
+        texture:SetVertexColor(1, 0.82, 0.55)
+    end
+    b:SetText(text)
+    return b
+end
+
 function ns.Print(fmt, ...)
     DEFAULT_CHAT_FRAME:AddMessage("|cff66ccffCommunityWishList|r: " .. fmt:format(...))
 end

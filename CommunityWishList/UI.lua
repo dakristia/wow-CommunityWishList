@@ -24,15 +24,7 @@ local function section(parent)
     return panel
 end
 
-local function button(parent, text, width)
-    local b = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    b:SetSize(width or 70, 22)
-    b:SetNormalFontObject(GameFontNormalSmall)
-    b:SetHighlightFontObject(GameFontHighlightSmall)
-    b:SetDisabledFontObject(GameFontDisableSmall)
-    b:SetText(text)
-    return b
-end
+local button = ns.Button
 
 -- The dropdown look has an arrow, so only buttons that pick from a list use it.
 local function dropdownButton(parent, text, width)
