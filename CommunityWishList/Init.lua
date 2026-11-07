@@ -51,8 +51,9 @@ end
 local function setupStore()
     local store = ns.Store.new{ db = CommunityWishListDB, me = me, now = time, guild = guildName }
     ns.store = store
-    store:OnChange(function(_, wish)
-        if localDepth > 0 and ns.sync then ns.sync:OnLocalChange(wish) end
+    -- A "wish" change on my own wish is always mine to broadcast, so the auto-close that Merge triggers also goes out.
+    store:OnChange(function(kind, wish)
+        if ns.sync and (localDepth > 0 or (kind == "wish" and wish.owner == me)) then ns.sync:OnLocalChange(wish) end
     end)
     for _, method in ipairs({ "AddWish", "UpdateWish", "CloseWish", "DeleteWish", "CancelClaim", "ReleaseClaim", "MarkReceived" }) do
         wrapLocal(store, method)
