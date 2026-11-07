@@ -1,0 +1,16 @@
+## Interface: 120001
+## Version: 0.1.0
+## Title: Community Wish List
+## Notes: Shared wish list for your guild and groups. Use /cwl to toggle.
+## Author: Daniel
+## SavedVariables: CommunityWishListDB
+
+Core.lua
+Codec.lua
+Store.lua
+Comm.lua
+Sync.lua
+Notify.lua
+UI.lua
+Minimap.lua
+Init.lua
