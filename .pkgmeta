@@ -1,0 +1,15 @@
+package-as: CommunityWishList
+
+# The addon sits in a subfolder, so its content moves up into the package folder.
+move-folders:
+  CommunityWishList/CommunityWishList: CommunityWishList
+
+ignore:
+  - README.md
+  - AGENTS.md
+  - tests
+  - CommunityWishList/docs
+  - CommunityWishList/GLOSSARY.md
+
+required-dependencies:
+  - libitemdb
