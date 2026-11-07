@@ -185,7 +185,7 @@ Rules:
 
 ## UI
 
-`CommunityWishListFrame`, a movable window that saves its position in `db.ui`. `/cwl` and `/wishlist` toggle it. It has four tabs:
+`CommunityWishListFrame`, a movable window that saves its position in `db.ui`. `/cwl` and `/wishlist` toggle it. `/cwl add <qty> <item link or name>` adds a guild wish from chat, and `/cwl help` lists the commands. It has four tabs:
 
 - **Wanted**: every open wish from others. A row shows the item icon and link, remaining and wanted quantity, wisher, note, gold, priority and a Claim button. Claim asks for a quantity and defaults to the remaining amount.
 - **My wishes**: my wishes with their claims (claimer, quantity, state, age), and Close, Delete, Release and Received buttons. An add form sits on top. Its item box accepts a shift-clicked link, an item dragged onto it, or a typed name.
