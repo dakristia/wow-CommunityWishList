@@ -27,7 +27,7 @@ function Store.new(opts)
     db.seq = db.seq or {}
     db.seen = db.seen or {}
     db.ui = db.ui or { point = "CENTER", x = 0, y = 0, tab = "wanted", minimap = { angle = 200 } }
-    return setmetatable({ db = db, me = fullname(opts.me), now = opts.now or time, guild = opts.guild or function() end, listeners = {} }, Store)
+    return setmetatable({ db = db, me = fullname(opts.me), now = opts.now or time, guild = opts.guild or function() end, isMember = opts.isMember or function() return false end, listeners = {} }, Store)
 end
 
 local function nextId(self)
@@ -68,12 +68,17 @@ function Store:AddWish(fields)
     if type(fields.name) ~= "string" or fields.name == "" then return nil, "invalid name" end
     if fields.item ~= nil and not integer(fields.item, 1) then return nil, "invalid item" end
     if fields.guild ~= nil and type(fields.guild) ~= "boolean" then return nil, "invalid guild" end
+    if fields.groups ~= nil and type(fields.groups) ~= "table" then return nil, "invalid groups" end
     local guild = fields.guild and self.guild() or nil
-    if not guild then return nil, "no audience" end
+    local groups = {}
+    for _, id in ipairs(fields.groups or {}) do
+        if type(id) == "string" and id ~= "" and self.isMember(id) then groups[id] = true end
+    end
+    if not guild and not next(groups) then return nil, "no audience" end
     local now = self.now()
     local wish = { id = nextId(self), owner = self.me, recipient = values.recipient or self.me,
         item = fields.item, name = fields.name, qty = values.qty, note = values.note,
-        gold = values.gold or 0, prio = values.prio or 2, audience = { guild = guild, groups = {} },
+        gold = values.gold or 0, prio = values.prio or 2, audience = { guild = guild, groups = groups },
         state = "open", v = 1, created = now, modified = now, claims = {} }
     self.db.wishes[wish.id] = wish
     notify(self, "wish", wish)

@@ -14,6 +14,7 @@ Core.lua
 Items.lua
 Codec.lua
 Store.lua
+Groups.lua
 Comm.lua
 Sync.lua
 Notify.lua

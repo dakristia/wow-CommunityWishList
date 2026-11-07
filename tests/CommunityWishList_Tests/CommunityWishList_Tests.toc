@@ -9,4 +9,5 @@ Tests_Items.lua
 Tests_UI.lua
 Tests_Notify.lua
 Tests_Mail.lua
+Tests_Groups.lua
 Run.lua
