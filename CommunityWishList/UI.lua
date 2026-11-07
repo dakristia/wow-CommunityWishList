@@ -32,10 +32,27 @@ local function button(parent, text, width)
     b:SetDisabledFontObject(GameFontDisableSmall)
     b:SetNormalAtlas("common-dropdown-b-button")
     b:SetPushedAtlas("common-dropdown-b-button-pressed")
-    b:SetHighlightAtlas("common-dropdown-b-button-hover", "BLEND")
     b:SetDisabledAtlas("common-dropdown-b-button-disabled")
+    -- The hover atlas is a whole opaque button, so it swaps in for the normal art.
+    -- As a highlight texture it would draw above the label and hide it.
+    b:SetScript("OnEnter", function(self) self:GetNormalTexture():SetAtlas("common-dropdown-b-button-hover") end)
+    b:SetScript("OnLeave", function(self) self:GetNormalTexture():SetAtlas("common-dropdown-b-button") end)
     b:SetText(text)
     return b
+end
+
+local function itemTooltip(owner, id)
+    if not id or not GameTooltip then return end
+    local link = ns.Items.Link(id)
+    GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
+    if link and GameTooltip.SetHyperlink then
+        GameTooltip:SetHyperlink(link)
+    elseif GameTooltip.SetItemByID then
+        GameTooltip:SetItemByID(id)
+    else
+        return
+    end
+    GameTooltip:Show()
 end
 
 local function editBox(parent, label, x, y, width)
@@ -155,13 +172,7 @@ local function rowFor(wish, claim)
         row.gold = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         row.gold:SetPoint("TOPRIGHT", -8, -19)
         row.buttonPool = {}
-        row.itemButton:SetScript("OnEnter", function(self)
-            if row.displayItem and GameTooltip and GameTooltip.SetItemByID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetItemByID(row.displayItem)
-                GameTooltip:Show()
-            end
-        end)
+        row.itemButton:SetScript("OnEnter", function(self) itemTooltip(self, row.displayItem) end)
         row.itemButton:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
         row.itemButton:SetScript("OnClick", function()
             if row.displayItem and HandleModifiedItemClick then
@@ -364,20 +375,18 @@ local function createForm()
     form:SetHeight(146)
     local leftWidth, rightWidth, gap = contentWidth - 196 - 24, 196, 24
     form.item = editBox(form, "Item", 0, -20, leftWidth)
-    form.item:SetTextInsets(0, 36, 0, 0)
     form.itemIcon = CreateFrame("Button", nil, form)
-    form.itemIcon:SetSize(20, 20)
-    form.itemIcon:SetPoint("RIGHT", form.item, "RIGHT", -6, 0)
+    form.itemIcon:SetSize(16, 16)
+    form.itemIcon:SetPoint("LEFT", form.item, "LEFT", 0, 0)
+    -- The icon sits inside the edit box, so it needs a higher level to get the mouse for its tooltip.
+    form.itemIcon:SetFrameLevel(form.item:GetFrameLevel() + 2)
     form.itemIcon.icon = form.itemIcon:CreateTexture(nil, "ARTWORK")
     form.itemIcon.icon:SetAllPoints()
-    form.itemIcon:SetScript("OnEnter", function(self)
-        if form.selectedItem and GameTooltip and GameTooltip.SetItemByID then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetItemByID(form.selectedItem)
-            GameTooltip:Show()
-        end
-    end)
+    form.itemIcon:SetScript("OnEnter", function(self) itemTooltip(self, form.selectedItem) end)
     form.itemIcon:SetScript("OnLeave", function() if GameTooltip then GameTooltip:Hide() end end)
+    -- The item name starts after the icon while the icon shows.
+    form.itemIcon:SetScript("OnShow", function() form.item:SetTextInsets(20, 0, 0, 0) end)
+    form.itemIcon:SetScript("OnHide", function() form.item:SetTextInsets(0, 0, 0, 0) end)
     form.itemIcon:Hide()
     local suggestions = CreateFrame("Frame", nil, form, "BackdropTemplate")
     form.suggestions = suggestions
