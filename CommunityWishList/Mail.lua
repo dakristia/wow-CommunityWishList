@@ -243,6 +243,9 @@ function Mail.CreatePanel(mail)
             panel:ClearAllPoints()
             panel:SetPoint("TOPLEFT", MailFrame, "TOPRIGHT", 0, 0)
         end
+        -- The panel sits where the opened letter appears, so a lower strata lets the letter draw over it.
+        -- SetParent resets the strata, so this runs on every show.
+        panel:SetFrameStrata("LOW")
         panel.Refresh()
     end)
     mail.panel = panel
