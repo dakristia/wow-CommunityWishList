@@ -33,6 +33,16 @@ T.add("Names IsMyStoredName accepts the first-name-only key and rejects another 
     end)
 end)
 
+T.add("Names IsMyStoredName matches keys from any realm when my realm is empty", function()
+    stubbed(ns, { Me = function() return "Glue Enjoyer-" end }, function()
+        T.check(ns.IsMyStoredName("Glue Enjoyer-"))
+        T.check(ns.IsMyStoredName("Glue-CAMWOWEU5Realm2PvP"))
+        T.check(ns.IsMyStoredName("Glue Enjoyer-CAMWOWEU5Realm2PvP"))
+        T.check(not ns.IsMyStoredName("Glue Other-CAMWOWEU5Realm2PvP"))
+        T.check(not ns.IsMyStoredName("Crayons-CAMWOWEU5Realm2PvP"))
+    end)
+end)
+
 local function legacyStore(isMe)
     local clock = T.fakeClock()
     local function guild() return "Guild" end

@@ -108,10 +108,12 @@ function ns.IsMyStoredName(key)
     local me = ns.Me()
     if not me then return false end
     if key == me then return true end
-    local myName, myRealm = me:match("^(.*)%-([^%-]+)$")
-    local name, keyRealm = key:match("^(.*)%-([^%-]+)$")
+    local myName, myRealm = me:match("^(.*)%-([^%-]*)$")
+    local name, keyRealm = key:match("^(.*)%-([^%-]*)$")
     if not (myName and name) then return false end
-    if ns.NormalizeRealm(keyRealm) ~= ns.NormalizeRealm(myRealm) then return false end
+    -- The Forever client stopped returning a realm, so my key became "Glue Enjoyer-" and records written
+    -- before that ("Glue-Realm") only match on the name.
+    if myRealm ~= "" and ns.NormalizeRealm(keyRealm) ~= ns.NormalizeRealm(myRealm) then return false end
     if name == myName then return true end
     local first, myFirst = name:match("^%S+"), myName:match("^%S+")
     if first ~= myFirst then return false end
